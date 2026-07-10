@@ -1608,19 +1608,19 @@ pub fn get_builtin_rules() -> Vec<Rule> {
         Rule {
             id: "ENV-003".to_string(),
             name: "Bashrc/profile modification".to_string(),
-            description: "Modifying shell config for persistence".to_string(),
+            description: "Modifying shell config for persistence. Covers user (~/) and system (/etc/) shell startup files for bash, zsh, fish, and profile.d includes. Detected the June 2026 'Russian spam' campaign that appended offensive messages to /etc/bash.bashrc, /etc/zsh/zshrc, /etc/fish/config.fish, and /etc/profile.d/*.sh.".to_string(),
             severity: Severity::Critical,
             category: Category::Persistence,
             patterns: vec![
                 Pattern::Regex {
-                    pattern: r"~/\.(bashrc|bash_profile|profile|zshrc)".to_string(),
+                    pattern: r"~/\.(bashrc|bash_profile|profile|zshrc|zprofile|zshenv|config/fish/config\.fish)".to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"/etc/(bash\.bashrc|profile|zsh/)".to_string(),
+                    pattern: r"/etc/(bash\.bashrc|profile|zsh/zshrc|zsh/zprofile|fish/config\.fish|profile\.d/)".to_string(),
                 },
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
-            recommendation: "Packages should not modify shell configuration".to_string(),
+            recommendation: "Packages should not modify shell configuration. If you see this and it's not a known-legitimate package, this is a persistence mechanism — treat the host as compromised.".to_string(),
             cwe_id: Some("CWE-506".to_string()),
             enabled: true,
             case_sensitive: false,
@@ -1657,11 +1657,11 @@ pub fn get_builtin_rules() -> Vec<Rule> {
         Rule {
             id: "ATOMIC-001".to_string(),
             name: "Atomic Arch malicious npm/bun package".to_string(),
-            description: "References a known-malicious package from the June 2026 'Atomic Arch' AUR supply-chain campaign (atomic-lockfile, js-digest, lockfile-js). These pull an infostealer and eBPF rootkit during the build/install phase.".to_string(),
+            description: "References a known-malicious package from the June 2026 'Atomic Arch' AUR supply-chain campaign (atomic-lockfile, js-digest, lockfile-js, nextfile-js). These pull an infostealer and eBPF rootkit during the build/install phase. nextfile-js was the wave-3 payload delivered via shell-obfuscated bun install commands.".to_string(),
             severity: Severity::Critical,
             category: Category::MaliciousCode,
             patterns: vec![Pattern::Regex {
-                pattern: r"\b(atomic-lockfile|js-digest|lockfile-js)\b".to_string(),
+                pattern: r"\b(atomic-lockfile|js-digest|lockfile-js|nextfile-js)\b".to_string(),
             }],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
             recommendation: "Do NOT build. This is a known-malicious dependency. Remove the package and treat the host as compromised: rotate credentials (SSH, npm/GitHub tokens, browser sessions).".to_string(),
@@ -1723,6 +1723,26 @@ pub fn get_builtin_rules() -> Vec<Rule> {
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
             recommendation: "This is a rootkit dropper artifact. Do not build; treat the host as compromised and reinstall rather than clean.".to_string(),
+            cwe_id: Some("CWE-506".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+        Rule {
+            id: "ATOMIC-004".to_string(),
+            name: "Sudo credential-stealer shim".to_string(),
+            description: "Creates a ~/.local/bin/sudo shim that steals passwords before invoking real sudo. Documented as an IOC of the June 2026 Atomic Arch campaign (SHA256 fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe). Also flags any ~/.local/bin PATH-priority shadow of a sensitive system command.".to_string(),
+            severity: Severity::Critical,
+            category: Category::CredentialTheft,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r"~/\\.local/bin/sudo\\b".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"\\$HOME/\\.local/bin/sudo\\b".to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "This is a credential-stealing shim. Do not build; treat the host as compromised: rotate all passwords entered via sudo on affected systems.".to_string(),
             cwe_id: Some("CWE-506".to_string()),
             enabled: true,
             case_sensitive: false,

@@ -83,6 +83,39 @@ impl SecurityAnalyzer for PatternAnalyzer {
             }
         }
 
+        // Analyze ALPM .hook file if present. The June 2026 Atomic Arch
+        // campaign delivered malicious payloads in <pkg>.hook files as an
+        // alternate to .install scripts (wave 2/4).
+        if let Some(ref hook_file) = context.hook_file {
+            let hook_matches = self
+                .rule_engine
+                .match_content(&hook_file.content, FileType::HookFile);
+
+            for rule_match in hook_matches {
+                if let Some(rule) = self.rule_engine.get_rule(&rule_match.rule_id) {
+                    findings.push(Finding {
+                        id: rule.id.clone(),
+                        severity: rule.severity,
+                        category: rule.category.clone(),
+                        title: format!("{} (ALPM hook)", rule.name),
+                        description: rule.description.clone(),
+                        location: Location {
+                            file: hook_file.path.clone(),
+                            line: Some(rule_match.line),
+                            column: Some(rule_match.column),
+                            snippet: Some(rule_match.context.clone()),
+                        },
+                        recommendation: rule.recommendation.clone(),
+                        cwe_id: rule.cwe_id.clone(),
+                        metadata: serde_json::json!({
+                            "matched_text": rule_match.matched_text,
+                            "in_hook_file": true,
+                        }),
+                    });
+                }
+            }
+        }
+
         // Analyze function bodies for specific patterns
         for (func_name, func_body) in &context.pkgbuild.functions {
             // Check for suspicious patterns in build/package functions
@@ -175,6 +208,7 @@ mod tests {
         AnalysisContext {
             pkgbuild,
             install_script: None,
+            hook_file: None,
             config: ScanConfig::default(),
             file_path: PathBuf::from("PKGBUILD"),
         }

@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-07-10
+
+### Added — Atomic Arch supply-chain attack coverage (June 2026)
+
+The June 2026 "Atomic Arch" AUR supply-chain attack unfolded in five waves, each
+mutating to evade prior detection methods. This release closes coverage gaps
+identified against all five waves.
+
+- **Wave 1 & 2 — npm `atomic-lockfile` / bun `js-digest`**: Already covered by
+  ATOMIC-001 (malicious package names) and ATOMIC-002 (npm/bun in install hooks).
+
+- **Wave 3 — Obfuscated `bun add nextfile-js`**: Shell-obfuscated payloads
+  (ANSI-C `$'\x..'` + empty-quote concatenation) were already caught by the
+  de-obfuscation engine, but `nextfile-js` was missing from ATOMIC-001's
+  known-malicious package list. **Added `nextfile-js` to ATOMIC-001**.
+
+- **Wave 4 — ALPM `.hook` file delivery**: Attackers delivered payloads in
+  packaged `.hook` files alongside (or instead of) `.install` scripts, escaping
+  scanners that only look at `.install` files. **Added full `.hook` file scanning**
+  — the scanner now discovers `<pkg>.hook` files in the package directory and
+  scans them with the same rule engine (FileType::HookFile). Malicious `.hook`
+  files from the campaign (e.g. `archlinux-themes-slim.hook`, `autologin.hook`)
+  would now be caught.
+
+- **Wave 5 — Shell-RC injection ("Russian spam")**: Copycat attackers appended
+  offensive messages to shell startup files (`/etc/bash.bashrc`, `/etc/zsh/zshrc`,
+  `/etc/fish/config.fish`, `/etc/profile.d/*.sh`). **Expanded ENV-003** to cover
+  all target files from the campaign: fish config paths, `/etc/zsh/zshrc`,
+  `/etc/zsh/zprofile`, `~/.zprofile`, `~/.zshenv`, and `/etc/profile.d/`.
+
+- **Sudo credential-stealer shim**: The `~/.local/bin/sudo` shim (SHA256
+  fd485233…) documented as a campaign IOC was undetected. **Added ATOMIC-004**
+  to detect this PATH-shadowing credential theft mechanism.
+
+### Changed
+
+- ENV-003 regex patterns expanded to cover fish shell config and additional
+  zsh/profile.d paths targeted by the Russian-spam wave. Recommendation text
+  now includes compromise guidance.
+
 ## [2.0.0] - 2026-06-17
 
 Major release: optional, opt-in threat-intelligence lookups (VirusTotal +

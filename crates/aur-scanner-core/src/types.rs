@@ -326,6 +326,8 @@ pub struct AnalysisContext {
     pub pkgbuild: crate::parser::ParsedPkgbuild,
     /// Parsed install script if present
     pub install_script: Option<crate::parser::ParsedInstallScript>,
+    /// Parsed ALPM .hook file if present (alternate delivery mechanism for malware)
+    pub hook_file: Option<crate::parser::ParsedHookFile>,
     /// Scanner configuration
     pub config: ScanConfig,
     /// Path to the PKGBUILD file
@@ -340,6 +342,8 @@ pub enum FileType {
     Pkgbuild,
     /// .install script
     InstallScript,
+    /// ALPM .hook file (pacman hook delivered alongside PKGBUILD)
+    HookFile,
     /// Patch or source file
     SourceFile,
 }

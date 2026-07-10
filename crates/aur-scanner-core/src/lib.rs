@@ -163,10 +163,35 @@ impl Scanner {
         };
         let scanned_install = install_script.as_ref().map(|s| s.path.clone());
 
+        // Discover ALPM .hook files alongside the PKGBUILD. The June 2026
+        // Atomic Arch campaign delivered malicious payloads in <pkg>.hook files
+        // (an alternate form of install-time execution), so scanning .hook files
+        // is essential coverage.
+        let hook_path = discover_hook_file(dir);
+        let hook_file = if let Some(hook_path) = hook_path {
+            match read_text_capped(&hook_path) {
+                Ok(content) => {
+                    debug!("Found ALPM .hook file: {}", hook_path.display());
+                    Some(parser::ParsedHookFile {
+                        content,
+                        path: hook_path,
+                    })
+                }
+                Err(e) => {
+                    warn!("Failed to read hook file {}: {}", hook_path.display(), e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let scanned_hook = hook_file.as_ref().map(|h| h.path.clone());
+
         // Create analysis context
         let context = AnalysisContext {
             pkgbuild: pkgbuild.clone(),
             install_script,
+            hook_file,
             config: self.config.clone(),
             file_path: path.to_path_buf(),
         };
@@ -205,6 +230,9 @@ impl Scanner {
         let mut scanned_files = vec![path.to_path_buf()];
         if let Some(install_path) = scanned_install {
             scanned_files.push(install_path);
+        }
+        if let Some(hook_path) = scanned_hook {
+            scanned_files.push(hook_path);
         }
 
         Ok(ScanResult {
@@ -376,6 +404,36 @@ fn expand_pkg_vars(value: &str, pkgname: &str) -> String {
         .replace("$pkgbase", pkgname)
         .trim_matches(['"', '\''])
         .to_string()
+}
+
+/// Discover any ALPM .hook file in the package directory.
+///
+/// The June 2026 Atomic Arch campaign used .hook files as an alternate
+/// delivery mechanism for the malicious payload (e.g. archlinux-themes-slim.hook,
+/// autologin.hook). These are pacman hooks executed at install time, equivalent
+/// to .install scripts for malware delivery.
+fn discover_hook_file(dir: &Path) -> Option<std::path::PathBuf> {
+    let mut hook_files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("hook"))
+        .collect();
+    hook_files.sort();
+    match hook_files.len() {
+        0 => None,
+        1 => Some(hook_files.remove(0)),
+        _ => {
+            // Multiple .hook files: scan the first and warn.
+            let first = hook_files.remove(0);
+            warn!(
+                "multiple .hook files in {}; scanning '{}' only",
+                dir.display(),
+                first.file_name().and_then(|n| n.to_str()).unwrap_or("?")
+            );
+            Some(first)
+        }
+    }
 }
 
 #[cfg(test)]

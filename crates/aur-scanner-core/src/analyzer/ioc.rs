@@ -172,6 +172,7 @@ mod tests {
         let context = AnalysisContext {
             pkgbuild,
             install_script: None,
+            hook_file: None,
             config: ScanConfig::default(),
             file_path: PathBuf::from("PKGBUILD"),
         };
@@ -194,6 +195,7 @@ mod tests {
         let context = AnalysisContext {
             pkgbuild,
             install_script: None,
+            hook_file: None,
             config: ScanConfig::default(),
             file_path: PathBuf::from("PKGBUILD"),
         };
@@ -231,6 +233,7 @@ mod tests {
         let context = AnalysisContext {
             pkgbuild,
             install_script: None,
+            hook_file: None,
             config: ScanConfig::default(),
             file_path: PathBuf::from("PKGBUILD"),
         };

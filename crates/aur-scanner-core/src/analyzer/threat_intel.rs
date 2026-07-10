@@ -235,6 +235,7 @@ mod tests {
         AnalysisContext {
             pkgbuild: parsed,
             install_script: None,
+            hook_file: None,
             config: ScanConfig::default(),
             file_path: PathBuf::from("PKGBUILD"),
         }

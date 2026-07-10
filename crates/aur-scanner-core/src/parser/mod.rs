@@ -304,6 +304,15 @@ pub struct ParsedInstallScript {
     pub hooks: Vec<InstallHook>,
 }
 
+/// Parsed ALPM .hook file (pacman hook delivered alongside PKGBUILD)
+#[derive(Debug, Clone)]
+pub struct ParsedHookFile {
+    /// Raw content
+    pub content: String,
+    /// Path to the hook file
+    pub path: PathBuf,
+}
+
 /// Hook defined in an install script
 #[derive(Debug, Clone)]
 pub struct InstallHook {
