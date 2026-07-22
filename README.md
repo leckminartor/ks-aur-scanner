@@ -89,9 +89,9 @@ The Arch User Repository (AUR) is an incredible community resource that extends 
 
 | Date | Attack | Impact |
 |------|--------|--------|
-| **June 2026** | "Atomic Arch" — 1,500+ orphaned packages adopted and modified to pull malicious npm/bun packages (`atomic-lockfile`, `js-digest`) | Credential stealer + eBPF rootkit (`scales.bpf.c`) dropped from install hooks |
+| **June 2026** | "Atomic Arch" — 1,500+ orphaned packages adopted and modified to pull malicious npm/bun packages (`atomic-lockfile`, `js-digest`, `lockfile-js`) | Credential stealer + eBPF rootkit (`scales.bpf.c`) dropped from install hooks |
 | **July 2025** | CHAOS RAT distributed via `firefox-patch-bin` and `librewolf-fix-bin` | Remote access trojan with persistence via systemd masquerading |
-| **2018** | Orphaned packages `acroread`, `balz`, `minergate` hijacked | Cryptominer installation via `curl \| bash` and systemd timers |
+| **2018** | Orphaned packages `acroread`, `balz`, `minergate` hijacked | Cryptominer installation via `curl | bash` and systemd timers |
 | **Ongoing** | Typosquatting attacks mimicking popular package names | Various malware payloads |
 
 **There was no automated tool to scan for these threats before installation. Now there is.**
