@@ -72,6 +72,8 @@ pub enum IocKind {
     FileArtifact,
     /// A C2 / exfiltration domain.
     Domain,
+    /// A SHA-256 payload hash.
+    Sha256,
 }
 
 impl IocKind {
@@ -81,6 +83,7 @@ impl IocKind {
             IocKind::NpmPackage => "malicious npm/bun package",
             IocKind::FileArtifact => "payload file artifact",
             IocKind::Domain => "C2/exfil domain",
+            IocKind::Sha256 => "SHA-256 payload hash",
         }
     }
 }
@@ -201,6 +204,7 @@ impl IocDatabase {
             for (map, kind) in [
                 (&self.npm_packages, IocKind::NpmPackage),
                 (&self.files, IocKind::FileArtifact),
+                (&self.sha256, IocKind::Sha256),
             ] {
                 for (indicator, campaign) in map {
                     if tokens.iter().any(|t| t == indicator) {
@@ -276,6 +280,20 @@ mod tests {
         // alvr was hijacked-then-reverted; it must NOT be a name indicator.
         let db = IocDatabase::embedded();
         assert!(db.match_aur_package("alvr").is_none());
+    }
+
+    #[test]
+    fn scan_detects_sha256_payload_hash() {
+        let db = IocDatabase::embedded();
+        // Wave-3 stage-1 loader hash must match as a whole token.
+        let hits = db.scan_content(
+            "sha256sums=('SKIP' 'e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77')",
+        );
+        assert!(
+            hits.iter()
+                .any(|h| h.kind == IocKind::Sha256 && h.value == "e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77"),
+            "embedded Wave-3 sha256 IOC must match: {hits:?}"
+        );
     }
 
     #[test]

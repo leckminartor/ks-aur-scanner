@@ -90,6 +90,7 @@ The Arch User Repository (AUR) is an incredible community resource that extends 
 | Date | Attack | Impact |
 |------|--------|--------|
 | **June 2026** | "Atomic Arch" — 1,500+ orphaned packages adopted and modified to pull malicious npm/bun packages (`atomic-lockfile`, `js-digest`, `lockfile-js`) | Credential stealer + eBPF rootkit (`scales.bpf.c`) dropped from install hooks |
+| **Jul/Aug 2026** | "Atomic Arch Wave 3" — two-stage C loader (`sudo "$srcdir/optimizer"` in `build()`) + Rust stealer/RAT/SSH-worm via Tor `.onion` C2 | Credential/crypto/browser harvest, Tor exfil, SSH lateral movement; forced AUR push lockdown (2026-08-01) |
 | **July 2025** | CHAOS RAT distributed via `firefox-patch-bin` and `librewolf-fix-bin` | Remote access trojan with persistence via systemd masquerading |
 | **2018** | Orphaned packages `acroread`, `balz`, `minergate` hijacked | Cryptominer installation via `curl | bash` and systemd timers |
 | **Ongoing** | Typosquatting attacks mimicking popular package names | Various malware payloads |
@@ -573,6 +574,10 @@ NeedsTargets
 | `ATOMIC-001` | Atomic Arch malicious npm/bun package | Malicious Code | rules | CWE-506 |
 | `ATOMIC-002` | Node/Bun package manager in install hook | Malicious Code | rules | CWE-494 |
 | `ATOMIC-003` | eBPF rootkit / payload artifact | Persistence | rules | CWE-506 |
+| `ATOMIC-005` | Root-privileged build-time helper execution | Privilege Escalation | rules | CWE-269 |
+| `ATOMIC-006` | Private Tor client / onion C2 (stage-1 loader) | Persistence | rules | CWE-506 |
+| `ATOMIC-007` | Stage-2 drop paths / systemd-run launch | Persistence | rules | CWE-506 |
+| `ATOMIC-008` | Tor-exfil argv[0] masquerade / xattr marker | Credential Theft | rules | CWE-200 |
 | `BROWSER-001` | Browser profile access | Credential Theft | rules | CWE-522 |
 | `BROWSER-002` | Browser database access | Credential Theft | rules | CWE-522 |
 | `CRED-001` | SSH key access | Credential Theft | rules | CWE-522 |

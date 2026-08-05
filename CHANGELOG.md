@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-08-05
+
+### Added — "Atomic Arch Wave 3" two-stage loader/stealer coverage (July/Aug 2026)
+
+A third wave of the Atomic Arch campaign triggered the AUR push lockdown on
+2026-08-01. Unlike Waves 1-2 (npm/bun delivery), this campaign uses a two-stage
+attack: a C loader run as **root via `sudo "$srcdir/optimizer"` inside `build()`**
+— *before* any pre-install hook can scan it — which bootstraps a private Tor
+client, dials a `.onion` C2, downloads a Rust infostealer/RAT/SSH-worm, and
+launches it via `systemd-run --user --scope`. Analysis: orhun/aur-report.md,
+ysf/stage2.md, IFIN Threat Intel thread 698.
+
+- **ATOMIC-005 — Root-privileged build-time helper execution**: Flags any
+  `sudo "$srcdir/<file>"` in a PKGBUILD's build/package phase. This is the exact
+  Wave-3 loader vector — root elevation before any hook fires.
+- **ATOMIC-006 — Private Tor client / onion C2 (stage-1 loader)**: Detects the
+  Tor expert-bundle download from archive.torproject.org, the
+  `--DataDirectory`/`--SocksPort` bootstrap, `LD_LIBRARY_PATH=/tmp/tb`,
+  `Bootstrapped 100%`, and the known Wave-3 C2 onion
+  `p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion`.
+- **ATOMIC-007 — Stage-2 drop paths / systemd-run launch**: Detects
+  `/dev/shm/.agent.bin`, `/tmp/linux-x86_64/agent`, `systemd-run --user --scope`,
+  and `loginctl enable-linger`.
+- **ATOMIC-008 — Tor-exfil argv[0] masquerade / xattr marker**: Detects the
+  `dbus-daemon` process-masquerade, `AllowSingleHopCircuits`, and the
+  `security.selinux` reinfection-marker.
+- **IOC database**: New campaign `atomic-arch-2026-08` with the C2 onion domain
+  and 3 known payload hashes (2 stage-1 loaders, 1 stage-2 agent).
+
+### Notes
+
+- Generic file names (`agent`, `optimizer`) were intentionally **not** added to
+  the `[files]` IOC map to avoid false positives — they are caught by the
+  ATOMIC-005..008 content rules instead.
+- `torproject.org` / `archive.torproject.org` are **not** added as content-rule
+  patterns here; network-level blocking of these lives in arch-shield's C2
+  blocklist, since they are legitimate sites that the loader ab(uses).
+
 ## [2.1.0] - 2026-07-10
 
 ### Added — Atomic Arch supply-chain attack coverage (June 2026)

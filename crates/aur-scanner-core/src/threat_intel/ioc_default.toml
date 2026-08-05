@@ -16,7 +16,7 @@
 #   $XDG_DATA_HOME/aur-scanner/ioc.toml  (default ~/.local/share/aur-scanner/ioc.toml)
 
 schema_version = 1
-updated = "2026-06-13"
+updated = "2026-08-05"
 
 [[campaigns]]
 id = "atomic-arch-2026-06"
@@ -32,6 +32,13 @@ date = "2025-07"
 description = "Fake browser-fix packages executed Python in post_install to download and install a remote access trojan with systemd persistence."
 reference = ""
 
+[[campaigns]]
+id = "atomic-arch-2026-08"
+name = "Atomic Arch Wave 3"
+date = "2026-07-29"
+description = "Two-stage attack: a C loader (run as root via `sudo $srcdir/optimizer` inside build(), BEFORE any pre-install hook) bootstraps a private Tor client, fetches a Rust infostealer/RAT/SSH-worm from a .onion C2, and launches it via systemd-run. Credential/crypto/browser harvest with Tor exfil. Led to the AUR push lockdown on 2026-08-01."
+reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
+
 # Malicious npm/bun packages pulled during the build/install phase.
 # Unambiguously malicious wherever they are installed from.
 [npm_packages]
@@ -40,8 +47,12 @@ reference = ""
 "lockfile-js" = "atomic-arch-2026-06"
 
 # File-name artifacts dropped or compiled by the payload.
+# NOTE: only unambiguously-malicious names. Generic names like "agent" or
+# "optimizer" are skipped to avoid false positives — those are caught by the
+# ATOMIC-005..008 content rules instead.
 [files]
 "scales.bpf.c" = "atomic-arch-2026-06"
+".agent.bin" = "atomic-arch-2026-08"
 
 # Wholly-fake packages (malicious by existence, safe to name). These never had
 # a legitimate upstream, unlike hijacked-then-reverted real packages.
@@ -52,6 +63,13 @@ reference = ""
 
 # C2 / exfiltration domains. Populate from live feeds.
 [domains]
+"p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion" = "atomic-arch-2026-08"
 
 # SHA-256 hashes of known malicious payloads. Populate from live feeds.
 [sha256]
+# Wave 3 (July 2026) stage-1 loader — meshcore-open-git "optimizer" (GCC 16.1.1, 43,640 bytes)
+"e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77" = "atomic-arch-2026-08"
+# Wave 3 (July 2026) stage-1 loader (variant)
+"2d25d2ea313767fae5808164224cf6ad610ab09546d1e5a6f033eedbfd98a281" = "atomic-arch-2026-08"
+# Wave 3 (July 2026) stage-2 Rust infostealer/RAT/SSH-worm (3,668,704 bytes)
+"06c857c8ca798d50c765b4de39e6c4f272ecb57bc8316a8ed4c0fdf02fb59502" = "atomic-arch-2026-08"

