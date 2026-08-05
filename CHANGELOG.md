@@ -20,10 +20,11 @@ ysf/stage2.md, IFIN Threat Intel thread 698.
   `sudo "$srcdir/<file>"` in a PKGBUILD's build/package phase. This is the exact
   Wave-3 loader vector — root elevation before any hook fires.
 - **ATOMIC-006 — Private Tor client / onion C2 (stage-1 loader)**: Detects the
-  Tor expert-bundle download from archive.torproject.org, the
-  `--DataDirectory`/`--SocksPort` bootstrap, `LD_LIBRARY_PATH=/tmp/tb`,
-  `Bootstrapped 100%`, and the known Wave-3 C2 onion
-  `p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion`.
+  loader-specific Tor bootstrap (`--DataDirectory`/`--SocksPort` under /tmp,
+  `LD_LIBRARY_PATH=/tmp/tb`) and the known Wave-3 C2 onion
+  `p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion`. Generic Tor
+  usage (`archive.torproject.org` download, `Bootstrapped 100%`) is deliberately
+  NOT flagged to avoid false positives.
 - **ATOMIC-007 — Stage-2 drop paths / systemd-run launch**: Detects
   `/dev/shm/.agent.bin`, `/tmp/linux-x86_64/agent`, `systemd-run --user --scope`,
   and `loginctl enable-linger`.
@@ -47,6 +48,17 @@ ysf/stage2.md, IFIN Threat Intel thread 698.
 - `torproject.org` / `archive.torproject.org` / `Bootstrapped 100%` are
   **not** content-rule patterns — they are legitimate Tor usage; network-level
   blocking of the loader's bundle host lives in arch-shield's C2 blocklist.
+
+### Verification
+
+- **Dual-LLM code review** (code-quality + security-architecture) — all HIGH and
+  CRITICAL findings addressed (sha256 IOC matching, FP on legitimate Tor/SELinux
+  usage, SSH-worm and cloud-metadata coverage).
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): build + install `aur-scan 2.2.0`, then scanned simulated
+  Wave-3 PKGBUILDs — ATOMIC-005/006/007/009/010 fire correctly; legitimate Tor
+  usage and clean PKGBUILDs stay clean (exit 0, zero ATOMIC findings).
+- Workspace test suite: **275 tests green**.
 
 ## [2.1.0] - 2026-07-10
 

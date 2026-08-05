@@ -207,7 +207,12 @@ impl IocDatabase {
                 (&self.sha256, IocKind::Sha256),
             ] {
                 for (indicator, campaign) in map {
-                    if tokens.iter().any(|t| t == indicator) {
+                    // Case-insensitive whole-token match (sha256 in PKGBUILDs is
+                    // conventionally lowercase, but uppercase is legal and must hit).
+                    if tokens
+                        .iter()
+                        .any(|t| t.eq_ignore_ascii_case(indicator))
+                    {
                         hits.push(IocHit {
                             kind,
                             value: indicator.clone(),
@@ -290,9 +295,22 @@ mod tests {
             "sha256sums=('SKIP' 'e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77')",
         );
         assert!(
-            hits.iter()
-                .any(|h| h.kind == IocKind::Sha256 && h.value == "e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77"),
+            hits.iter().any(|h| h.kind == IocKind::Sha256
+                && h.value == "e73a35b3e75e94746428d1a207703d6335933deadee7d1d9c9d0328df7b9df77"),
             "embedded Wave-3 sha256 IOC must match: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn scan_detects_uppercase_sha256_payload_hash() {
+        // MED-3 fix: uppercase sha256 (legal in PKGBUILDs) must also match.
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "sha256sums=('SKIP' 'E73A35B3E75E94746428D1A207703D6335933DEADEE7D1D9C9D0328DF7B9DF77')",
+        );
+        assert!(
+            hits.iter().any(|h| h.kind == IocKind::Sha256),
+            "uppercase sha256 IOC must match case-insensitively: {hits:?}"
         );
     }
 
