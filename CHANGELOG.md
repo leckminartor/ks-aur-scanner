@@ -29,7 +29,13 @@ ysf/stage2.md, IFIN Threat Intel thread 698.
   and `loginctl enable-linger`.
 - **ATOMIC-008 — Tor-exfil argv[0] masquerade / xattr marker**: Detects the
   `dbus-daemon` process-masquerade, `AllowSingleHopCircuits`, and the
-  `security.selinux` reinfection-marker.
+  `security.selinux` reinfection-marker (now matched with its `0x01` value).
+- **ATOMIC-009 — SSH key exfil / lateral movement (SSH worm)**: Detects
+  `~/.ssh/id_rsa`/`id_ed25519` reads, `authorized_keys`/`known_hosts` tampering,
+  and `ssh`/`scp` with `BatchMode`/`StrictHostKeyChecking=no`.
+- **ATOMIC-010 — Cloud metadata endpoint exfiltration**: Detects the link-local
+  IAM metadata endpoint (`169.254.169.254`, `169.254.170.2`,
+  `metadata.google.internal`, `latest/meta-data`).
 - **IOC database**: New campaign `atomic-arch-2026-08` with the C2 onion domain
   and 3 known payload hashes (2 stage-1 loaders, 1 stage-2 agent).
 
@@ -38,9 +44,9 @@ ysf/stage2.md, IFIN Threat Intel thread 698.
 - Generic file names (`agent`, `optimizer`) were intentionally **not** added to
   the `[files]` IOC map to avoid false positives — they are caught by the
   ATOMIC-005..008 content rules instead.
-- `torproject.org` / `archive.torproject.org` are **not** added as content-rule
-  patterns here; network-level blocking of these lives in arch-shield's C2
-  blocklist, since they are legitimate sites that the loader ab(uses).
+- `torproject.org` / `archive.torproject.org` / `Bootstrapped 100%` are
+  **not** content-rule patterns — they are legitimate Tor usage; network-level
+  blocking of the loader's bundle host lives in arch-shield's C2 blocklist.
 
 ## [2.1.0] - 2026-07-10
 

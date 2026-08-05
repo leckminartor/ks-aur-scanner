@@ -577,7 +577,9 @@ NeedsTargets
 | `ATOMIC-005` | Root-privileged build-time helper execution | Privilege Escalation | rules | CWE-269 |
 | `ATOMIC-006` | Private Tor client / onion C2 (stage-1 loader) | Persistence | rules | CWE-506 |
 | `ATOMIC-007` | Stage-2 drop paths / systemd-run launch | Persistence | rules | CWE-506 |
-| `ATOMIC-008` | Tor-exfil argv[0] masquerade / xattr marker | Credential Theft | rules | CWE-200 |
+| `ATOMIC-008` | Tor-exfil argv[0] masquerade / xattr marker | Credential Theft | rules | CWE-522 |
+| `ATOMIC-009` | SSH key exfil / lateral movement (SSH worm) | Credential Theft | rules | CWE-522 |
+| `ATOMIC-010` | Cloud metadata endpoint exfiltration | Credential Theft | rules | CWE-522 |
 | `BROWSER-001` | Browser profile access | Credential Theft | rules | CWE-522 |
 | `BROWSER-002` | Browser database access | Credential Theft | rules | CWE-522 |
 | `CRED-001` | SSH key access | Credential Theft | rules | CWE-522 |
