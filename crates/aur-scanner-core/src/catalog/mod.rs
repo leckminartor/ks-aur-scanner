@@ -224,7 +224,7 @@ pub fn analyzer_codes() -> Vec<CatalogEntry> {
           "A large base64-like blob is embedded in the package.", "Decode and verify the blob is legitimate data."),
         // -- elf analyzer (embedded-ELF trojan) --
         e("ATOMIC-012", "Compiled ELF binary disguised as a source tool", Critical, MaliciousCode, "elf", Some("CWE-506"),
-          "The cloned source tree contains a compiled ELF binary under a benign tool name (linter/minifier/parser/assembler/translator/optimizer) that build()/package() executes — the Wave-3 embedded-ELF trojan vector.", "Do NOT build; treat the host as potentially compromised."),
+          "The cloned source tree contains a compiled ELF binary under a benign tool name (linter/minifier/parser/assembler/translator/optimizer). Critical when a build()/package() function executes or chmod+x's it (the Wave-3 embedded-ELF trojan vector); High when merely present (could be a legit product binary).", "Do NOT build; treat the host as potentially compromised."),
         // -- remote_exec analyzer --
         e("EXEC-REMOTE", "Fetches and runs external code", Critical, MaliciousCode, "remote_exec", Some("CWE-494"),
           "The package downloads and executes code from an external URL at build/install time; the scanner does not follow it (opaque boundary).", "Do not build; obtain software that ships its real code."),

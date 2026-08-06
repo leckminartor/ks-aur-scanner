@@ -4,6 +4,54 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.4.1] - 2026-08-06
+
+### Fixed — ATOMIC-012 severity + scan-cost hardening (dual-LLM follow-up review)
+
+The dual-LLM review of v2.4.0 surfaced two HIGH security findings that were
+shipped unaddressed and are now fixed in this patch release.
+
+- **ATOMIC-012 no longer fires Critical on presence alone** (HIGH-2 fix). The
+  six Wave-3 disguise names (`linter`/`minifier`/`parser`/`assembler`/
+  `translator`/`optimizer`) are also real product-binary names for legitimate
+  projects, so a compiled ELF merely *present* under one of them is now
+  **High** (elevated for manual review), not Critical. It becomes **Critical**
+  only when the file is actually **executed** in a `build()`/`package()` body,
+  or made executable via **`chmod +x`** (the Wave-3 preparation step). A new
+  `chmod_in_build()` correlation mirrors ATOMIC-011's `chmod` pattern. The
+  finding metadata now carries `executed_in_build`, `chmod_in_build`, and
+  `correlated` so operators can see exactly why it was raised.
+- **Bounded source-tree walk** (HIGH-1 fix): the walk now skips heavy /
+  non-source dirs (`node_modules`, `target`, `dist`, `build`, `vendor`,
+  `.cargo`, `.hg`, `.svn`, `.gradle`, `out`) and enforces hard caps
+  (`MAX_WALK_ENTRIES = 200_000`, `MAX_ELF_CANDIDATES = 512`), so a hostile repo
+  that ships millions of tiny files (or an unpruned vendored tree) can no
+  longer stall a single scan or an entire bulk/batch run — a self-inflicted DoS
+  otherwise.
+- **Robustness tidy-ups**: transient I/O errors in the walk are now logged
+  (`tracing::debug`) instead of silently swallowed (a silent `continue` could
+  hide a detection); `Regex::new` uses `.expect()` instead of `.unwrap()`;
+  `Location.file` now stores the relativized path so the absolute temp/clone
+  layout never leaks into reports; the misleading `is_elf` symlink doc was
+  corrected (it follows symlinks and must only be called on filtered paths).
+
+### Verification
+
+- **Dual-LLM review** (code-quality + security-architecture, v2.4.0). The
+  code-quality reviewer empirically confirmed the symlink-escape concern is a
+  non-issue and found two `executed_in_build` regex defects (false positive on
+  `linter-helpers`/`linter=1`, false negative on `then`/`do`/`else` separators)
+  that were fixed in v2.4.0. The security-architecture reviewer found **no**
+  code-execution/exfiltration/escape hole but flagged the two HIGH issues above,
+  which this release addresses. Regression tests added for each.
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): `cargo build --release --workspace` + `cargo test`
+  (**252 core tests green**, 300 total). Live binary checks: a package whose
+  ELF `optimizer` is executed in `build()` fires ATOMIC-012 **Critical** (exit
+  1); a package that merely ships an `optimizer` binary (installed, never run)
+  fires ATOMIC-012 **High** — reviewable, not auto-blocked as a confirmed
+  trojan.
+
 ## [2.4.0] - 2026-08-06
 
 ### Added — ATOMIC-012: Compiled ELF binary disguised as a source tool
