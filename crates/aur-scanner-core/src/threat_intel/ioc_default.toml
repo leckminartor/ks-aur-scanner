@@ -3,10 +3,18 @@
 # DESIGN RULE: only list indicators that are *permanently* malicious wherever
 # they appear -- payload package names, wholly-fake packages, dropped file
 # artifacts, C2 domains, payload hashes. Do NOT list legitimate AUR packages
-# that were transiently hijacked then reverted (e.g. alvr, premake-git):
-# blocklisting a legit package name by string is a false-positive generator.
-# Those hijacks are caught by content rules (ATOMIC-*) and the provenance
-# analyzer instead.
+# that were transiently hijacked then reverted (e.g. alvr, premake-git,
+# openconnect-sso, boringssl-git): blocklisting a legit package name by string
+# is a false-positive generator. Those hijacks are caught by content rules
+# (ATOMIC-*) and the provenance analyzer instead.
+#
+# Also deliberately EXCLUDED as standalone indicators (FP generators caught by
+# content rules instead):
+#   * temp.sh            -- a legitimate file-upload/paste service misused as an
+#                          exfil target; blocking the domain hits legit usage.
+#                          (The arch-shield network C2 blocklist still blocks it.)
+#   * deps / agent / .torrc -- too-generic basenames; covered by ATOMIC-003/
+#                          006/007 content rules.
 #
 # This file is embedded at build time. It can be extended/overridden at runtime
 # by dropping a file with the same schema at one of (merged, later wins for
@@ -16,13 +24,13 @@
 #   $XDG_DATA_HOME/aur-scanner/ioc.toml  (default ~/.local/share/aur-scanner/ioc.toml)
 
 schema_version = 1
-updated = "2026-08-05"
+updated = "2026-08-06"
 
 [[campaigns]]
 id = "atomic-arch-2026-06"
 name = "Atomic Arch"
 date = "2026-06-11"
-description = "1,500+ orphaned AUR packages were adopted and their PKGBUILD/install hooks modified to pull malicious npm/bun packages that drop a credential stealer and an eBPF rootkit."
+description = "1,500+ orphaned AUR packages were adopted and their PKGBUILD/install hooks modified to pull malicious npm/bun packages (atomic-lockfile, js-digest, lockfile-js, nextfile-js) that drop a credential stealer and an eBPF rootkit (scales.bpf.c), plus a ~/.local/bin/sudo credential shim."
 reference = "https://archlinux.org/news/active-aur-malicious-packages-incident/"
 
 [[campaigns]]
@@ -41,10 +49,15 @@ reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
 
 # Malicious npm/bun packages pulled during the build/install phase.
 # Unambiguously malicious wherever they are installed from.
+# NOTE: "nextfile-js" is the June 2026 npm/bun payload ("Wave 3" of the *June*
+# Atomic Arch npm campaign) — NOT the July 2026 two-stage loader campaign that
+# is also informally called "Wave 3" (that is `atomic-arch-2026-08`, caught by
+# ATOMIC-005..008 + the .onion/loader hashes below).
 [npm_packages]
 "atomic-lockfile" = "atomic-arch-2026-06"
 "js-digest" = "atomic-arch-2026-06"
 "lockfile-js" = "atomic-arch-2026-06"
+"nextfile-js" = "atomic-arch-2026-06"
 
 # File-name artifacts dropped or compiled by the payload.
 # NOTE: only unambiguously-malicious names. Generic names like "agent" or
@@ -53,6 +66,11 @@ reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
 [files]
 "scales.bpf.c" = "atomic-arch-2026-06"
 ".agent.bin" = "atomic-arch-2026-08"
+# eBPF rootkit pinned-map names (Wave 1-2 payload). Unambiguously malicious:
+# these BPF map files only exist as rootkit artifacts under /sys/fs/bpf/.
+"hidden_pids" = "atomic-arch-2026-06"
+"hidden_names" = "atomic-arch-2026-06"
+"hidden_inodes" = "atomic-arch-2026-06"
 
 # Wholly-fake packages (malicious by existence, safe to name). These never had
 # a legitimate upstream, unlike hijacked-then-reverted real packages.
@@ -63,7 +81,10 @@ reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
 
 # C2 / exfiltration domains. Populate from live feeds.
 [domains]
+# Wave 3 (July 2026) loader's onion C2.
 "p4ayykxcrxfyzrgfbbkazernntjbz43hgclrheguylzd7kijmtce6zqd.onion" = "atomic-arch-2026-08"
+# Wave 1-2 (June 2026) campaign C2 (Tor hidden service, /api/agent endpoint).
+"olrh4mibs62l6kkuvvjyc5lrercqg5tz543r4lsw3o6mh5qb7g7sneid.onion" = "atomic-arch-2026-06"
 
 # SHA-256 hashes of known malicious payloads. Populate from live feeds.
 [sha256]
@@ -73,3 +94,7 @@ reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
 "2d25d2ea313767fae5808164224cf6ad610ab09546d1e5a6f033eedbfd98a281" = "atomic-arch-2026-08"
 # Wave 3 (July 2026) stage-2 Rust infostealer/RAT/SSH-worm (3,668,704 bytes)
 "06c857c8ca798d50c765b4de39e6c4f272ecb57bc8316a8ed4c0fdf02fb59502" = "atomic-arch-2026-08"
+# Wave 1-2 (June 2026) "deps" ELF credential stealer + eBPF rootkit dropper
+"6144d433f8a0316869877b5f834c801251bbb936e5f1577c5680878c7443c98b" = "atomic-arch-2026-06"
+# Wave 1-2 (June 2026) ~/.local/bin/sudo credential-shim (steals sudo passwords)
+"fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe" = "atomic-arch-2026-06"

@@ -4,6 +4,53 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-08-06
+
+### Added — IOC database expansion (Atomic Arch June 2026 Wave 1-5 coverage)
+
+The embedded IOC database (`ioc_default.toml`) grew from 12 to 19 indicators,
+closing gaps against the June 2026 "Atomic Arch" campaign (Wave 1-5) that were
+documented in the threat-intel references but not yet in the database.
+
+- **npm/bun payloads:** added `nextfile-js` (Wave 3 obfuscated `bun add`
+  payload) alongside the existing `atomic-lockfile` / `js-digest` /
+  `lockfile-js`.
+- **eBPF rootkit artifacts:** added the pinned-map names `hidden_pids`,
+  `hidden_names`, `hidden_inodes` (Wave 1-2 rootkit maps under `/sys/fs/bpf/`).
+- **C2 domain:** added the Wave 1-2 onion C2
+  `olrh4mibs62l6kkuvvjyc5lrercqg5tz543r4lsw3o6mh5qb7g7sneid.onion`.
+- **Payload hashes:** added the Wave 1-2 `deps` credential-stealer ELF
+  (`6144d433…c98b`) and the `~/.local/bin/sudo` credential-shim
+  (`fd485233…2ebfe`) SHA-256s.
+
+All new indicators follow the established match semantics with both positive
+and no-false-positive regression tests (6 new `v250_*` tests). Generic artifact
+basenames (`deps`, `agent`, `optimizer`, `.torrc`) and the legitimate `temp.sh`
+service remain deliberately excluded — they are covered by the
+ATOMIC-003/005/006/007 content rules and the network blocklist, not name
+indicators.
+
+The file-artifact matcher is now **basename-aware** (a finding from the
+security-architecture review): a `files` indicator matches a whole token *and*
+the last `/`-path segment, so the real drop path `/sys/fs/bpf/hidden_pids`
+catches the `hidden_pids` indicator instead of the previous bare-token-only
+detection escape. Basename equality is exactly as specific as a whole-token
+match (no substring over-match), so this adds no false-positive risk.
+
+### Verification
+
+- **Dual-LLM review** (code-quality + security-architecture). Both reviewers
+  found **no release blocker** and **no CRITICAL/HIGH**. The security-architecture
+  reviewer flagged the `hidden_*` path-form detection escape (now closed with the
+  basename-aware matcher above) plus two cosmetic items addressed in this release
+  (overloaded "Wave 3" naming disambiguated; the negative test now also exercises
+  the `deps` and `.torrc` exclusions). The code-quality reviewer confirmed the
+  TOML parses with no duplicate keys and every new test is valid and correct.
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): `cargo build --release --workspace` + `cargo test`
+  (**258 core tests green**, 2 ignored live-network). `aur-scan ioc` shows the
+  expanded indicator set.
+
 ## [2.4.1] - 2026-08-06
 
 ### Fixed — ATOMIC-012 severity + scan-cost hardening (dual-LLM follow-up review)
@@ -511,5 +558,6 @@ automation, and the validation checklist in the PR before promoting to stable.
 
 See the project history prior to the introduction of this changelog.
 
+[2.5.0]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v2.5.0
 [2.0.0]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v2.0.0
 [1.1.0-rc1]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v1.1.0-rc1
