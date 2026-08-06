@@ -2,6 +2,7 @@
 
 mod checksum;
 mod deep;
+mod elf;
 mod ioc;
 mod metadata;
 mod pattern;
@@ -12,6 +13,7 @@ mod threat_intel;
 
 pub use checksum::ChecksumAnalyzer;
 pub use deep::DeepAnalyzer;
+pub use elf::ElfAnalyzer;
 pub use ioc::IocAnalyzer;
 pub use metadata::MetadataAnalyzer;
 pub use pattern::PatternAnalyzer;

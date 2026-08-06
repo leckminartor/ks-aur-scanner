@@ -562,7 +562,7 @@ NeedsTargets
 
 ## Detection Rules Reference
 
-> The **117 built-in detection codes**, generated from the catalog
+> The **118 built-in detection codes**, generated from the catalog
 > (`aur-scan codes --format markdown`) — every ID is unique and audit-enforced.
 > (`EXAMPLE-001` is the shipped community-rule sample, not a built-in.) Extend the
 > catalog with your own TOML rules (see [Custom & Community Rules](#custom--community-rules)).
@@ -581,6 +581,7 @@ NeedsTargets
 | `ATOMIC-009` | SSH key exfil / lateral movement (SSH worm) | Credential Theft | rules | CWE-522 |
 | `ATOMIC-010` | Cloud metadata endpoint exfiltration | Credential Theft | rules | CWE-522 |
 | `ATOMIC-011` | Embedded ELF helper execution in build()/package() (no sudo) | Malicious Code | rules | CWE-506 |
+| `ATOMIC-012` | Compiled ELF binary disguised as a source tool | Malicious Code | elf | CWE-506 |
 | `BROWSER-001` | Browser profile access | Credential Theft | rules | CWE-522 |
 | `BROWSER-002` | Browser database access | Credential Theft | rules | CWE-522 |
 | `CRED-001` | SSH key access | Credential Theft | rules | CWE-522 |

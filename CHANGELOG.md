@@ -4,6 +4,63 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-08-06
+
+### Added — ATOMIC-012: Compiled ELF binary disguised as a source tool
+
+ATOMIC-011 (v2.3.0) flags the *execution line* of a Wave-3 embedded-ELF helper
+in the PKGBUILD text. ATOMIC-012 supplies the **confirming, binary-level half**:
+it inspects the **already-cloned source tree** on disk and verifies that the
+disguised file (linter / minifier / parser / assembler / translator / optimizer)
+is genuinely a **compiled ELF** (magic bytes `\x7fELF`), not a shell script or a
+placeholder. The `check` command already clones the full AUR repo into a temp
+dir via `client.fetch_pkgbuild()` before scanning, so ATOMIC-012 walks that
+existing tree at **zero additional download cost**.
+
+- **ATOMIC-012 — Compiled ELF binary disguised as a source tool** (Critical,
+  CWE-506, detector `elf`): a new `ElfAnalyzer` walks the source-tree root
+  (the PKGBUILD's parent dir, i.e. the clone's temp dir) iteratively, skipping
+  `.git`, refusing to follow symlinks, and reading only the first 4 bytes of
+  each candidate for the `\x7fELF` magic (read-only, never executes). Findings
+  are emitted for any disguise-named regular file that is a real ELF, and
+  correlated with whether a `build()`/`package()` body actually executes it
+  (`executed_in_build`), so the report states both halves of the attack.
+- **Architecture note**: the source tree is scanned *in addition to* PKGBUILD +
+  install + `.hook` — the previously-uninspected remainder of the clone. A
+  trojan that ships an embedded ELF but never mentions it textually is now
+  caught on the strength of the binary itself.
+
+### Notes
+
+- The `ElfAnalyzer` is registered in the always-on default scanner, so it runs
+  on both `check` (network clone) and `scan_directory` / `--local` paths.
+- **False-positive guard**: only the six Wave-3 disguise names are inspected,
+  and only if the file is a genuine ELF. A compiled `app`/`main.o`/`configure`
+  in a normal Makefile project does **not** fire; a shell script named
+  `optimizer` does **not** fire (name alone is insufficient — it must be a real
+  compiled binary).
+- The `executed_in_build` correlation matches the same command-position
+  separator set as ATOMIC-011 (start-of-line, `; | & && (`, and the
+  `then`/`do`/`else` keywords) and rejects `-`/`.`/`=` suffixes (`linter-helpers`,
+  `optimizer.c`, `linter=1` never count as execution of the exact name).
+
+### Verification
+
+- **Dual-LLM code review** (code-quality + security-architecture): both models
+  read the actual code. The code-quality reviewer empirically confirmed the
+  symlink-escape concern is a **non-issue** (the walk is confined to the clone)
+  and found two `executed_in_build` regex defects that were fixed — a **false
+  positive** (`; linter-helpers`, `linter=1` matched via `\b`) and a **false
+  negative** (`then`/`do`/`else` command separators were not matched). The
+  security-architecture reviewer found **no** code-execution, exfiltration, or
+  directory-escape hole: the analyzer is strictly read-only.
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): `cargo build --release --workspace` + `cargo test`
+  (247 core tests green). Live binary checks: a fake package shipping a real
+  ELF `optimizer` executed in `build()` fires both ATOMIC-011 **and** ATOMIC-012
+  (gate trips, exit 1); a legit Makefile project with a compiled `app` binary
+  does **not** fire (exit 0).
+
 ## [2.3.0] - 2026-08-06
 
 ### Added — ATOMIC-011: Embedded ELF helper execution in build()/package() (no sudo)

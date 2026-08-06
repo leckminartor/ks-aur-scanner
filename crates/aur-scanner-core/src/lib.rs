@@ -72,6 +72,7 @@ impl Scanner {
             Arc::new(analyzer::ChecksumAnalyzer::new()),
             Arc::new(analyzer::PrivilegeAnalyzer::new()),
             Arc::new(analyzer::MetadataAnalyzer::new()),
+            Arc::new(analyzer::ElfAnalyzer::new()),
         ];
 
         // Opt-in, networked threat-intel analyzer. Added ONLY when the operator
