@@ -1936,6 +1936,39 @@ pub fn get_builtin_rules() -> Vec<Rule> {
             enabled: true,
             case_sensitive: false,
         },
+        Rule {
+            id: "ATOMIC-011".to_string(),
+            name: "Embedded ELF helper execution in build()/package() (no sudo)".to_string(),
+            description: "A build()/package() step executes a source-tree file in $srcdir that is disguised under a benign tool name (linter, minifier, parser, assembler, translator, optimizer) WITHOUT sudo. This is the Wave-3 (Aug 2026) Atomic Arch variant that embeds compiled ELF binaries directly into the PKGBUILD build script: the helper runs during makepkg with no network call and no npm/bun cache, so it evades the earlier delivery-based detection. ATOMIC-005 already catches the root-elevation form (`sudo \"$srcdir/<helper>\"`); ATOMIC-011 extends coverage to the sudo-free execution and to the chmod +x preparation step. Legitimate PKGBUILDs do not execute arbitrary source files under these tool names during the build phase (they use make/configure or install them).".to_string(),
+            severity: Severity::Critical,
+            category: Category::MaliciousCode,
+            patterns: vec![
+                // Direct execution of a $srcdir helper under a benign tool name,
+                // as a command (start of line, or after ; | & && a newline, or a
+                // command-position keyword like then/do/else, or a subshell open)
+                // — NOT as an argument to install/cp/mv (which is legitimate).
+                Pattern::Regex {
+                    pattern: r#"(^\s*|[;&|]\s*|&&\s*|\bthen\s*|\bdo\s*|\belse\s*|\(\s*)["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)"#
+                        .to_string(),
+                },
+                // chmod +x preparation of a $srcdir helper under a benign tool
+                // name — the step that makes the embedded ELF executable before
+                // it is run in build()/package(). Covers symbolic who forms
+                // (u+x, ug+x, a+x, +x), flag forms (chmod -R +x), and numeric
+                // modes (chmod 755). The tool name must be a complete path
+                // component (followed by quote/whitespace/slash/end), so
+                // `optimizer.bin` / `linter-helper` do not false-fire.
+                Pattern::Regex {
+                    pattern: r#"chmod\s+(?:-[A-Za-z]+\s+)*[ugoa]*\+x\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)|chmod\s+(?:-[A-Za-z]+\s+)*[0-7]{3,4}\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)"#
+                        .to_string(),
+                },
+            ],
+            file_types: vec![FileType::Pkgbuild],
+            recommendation: "Do NOT build. A source file under a benign tool name being executed (or made executable) inside build()/package() is an embedded-ELF trojan vector that bypasses network/npm/bun detection. Inspect the PKGBUILD diff, report the package, and treat the host as potentially compromised (check for stage-2 artifacts per ATOMIC-006/007).".to_string(),
+            cwe_id: Some("CWE-506".to_string()),
+            enabled: true,
+            case_sensitive: false,
+        },
 
         // ============================================================
         // PROACTIVE COVERAGE — additional reverse shells, exfil channels,
@@ -3351,6 +3384,67 @@ mod tests {
             assert!(
                 !m.iter().any(|x| x.rule_id == "ATOMIC-010"),
                 "ATOMIC-010 false positive on metadata reference: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic011_embedded_elf_helper_fires() {
+        // Wave-3 embedded-ELF variant: benign-named $srcdir helper executed
+        // WITHOUT sudo, or prepared with chmod +x, inside build()/package().
+        let engine = RuleEngine::default();
+        for s in [
+            "\"$srcdir/linter\"",
+            "$srcdir/minifier --config .minify.json",
+            "chmod +x \"$srcdir/assembler\"",
+            "chmod a+x $srcdir/translator",
+            "chmod u+x \"$srcdir/optimizer\"",
+            "make && \"$srcdir/optimizer\"",
+            "if [ -x \"$srcdir/linter\" ]; then \"$srcdir/linter\"; fi",
+            // Review fixes: indented execution (most common real placement),
+            // ${srcdir} brace form, chmod who/flag variants.
+            "    \"$srcdir/linter\"",
+            "\t\"$srcdir/linter\"",
+            "\"${srcdir}/linter\"",
+            "chmod ug+x \"$srcdir/optimizer\"",
+            "chmod -R +x \"$srcdir/assembler\"",
+            "chmod 755 \"$srcdir/linter\"",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                m.iter().any(|x| x.rule_id == "ATOMIC-011"),
+                "ATOMIC-011 missed embedded ELF helper: {s} -> {m:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_atomic011_no_fp_on_legit_install_usage() {
+        // Legitimate PKGBUILD usage of these tool names (installing, copying,
+        // building with make, or referencing a system tool) must NOT fire.
+        let engine = RuleEngine::default();
+        for s in [
+            "install -Dm755 \"$srcdir/optimizer\" \"$pkgdir/usr/bin/optimizer\"",
+            "cp \"$srcdir/linter\" \"$pkgdir/usr/bin/linter\"",
+            "make -C \"$srcdir\"",
+            "cd \"$srcdir\" && make install",
+            "command -v linter",
+            "which minifier",
+            "chmod +x \"$srcdir/configure\"",
+            "chmod +x \"$srcdir/build.sh\"",
+            "chmod +x \"$srcdir/install.sh\"",
+            "chmod +x \"$srcdir/makepkg\"",
+            // Review fixes: undo/redo must not fire via the `do`/`redo` substring,
+            // and chmod on a legitimately-shipped tool named like a benign name
+            // is a design tradeoff (kept as non-firing here for the common case).
+            "undo $srcdir/linter",
+            "redo $srcdir/linter",
+            "chmod +x \"$srcdir/optimizer.bin\"",
+        ] {
+            let m = engine.match_content(s, FileType::Pkgbuild);
+            assert!(
+                !m.iter().any(|x| x.rule_id == "ATOMIC-011"),
+                "ATOMIC-011 false positive on legit usage: {s} -> {m:?}"
             );
         }
     }

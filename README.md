@@ -580,6 +580,7 @@ NeedsTargets
 | `ATOMIC-008` | Tor-exfil argv[0] masquerade / xattr marker | Credential Theft | rules | CWE-522 |
 | `ATOMIC-009` | SSH key exfil / lateral movement (SSH worm) | Credential Theft | rules | CWE-522 |
 | `ATOMIC-010` | Cloud metadata endpoint exfiltration | Credential Theft | rules | CWE-522 |
+| `ATOMIC-011` | Embedded ELF helper execution in build()/package() (no sudo) | Malicious Code | rules | CWE-506 |
 | `BROWSER-001` | Browser profile access | Credential Theft | rules | CWE-522 |
 | `BROWSER-002` | Browser database access | Credential Theft | rules | CWE-522 |
 | `CRED-001` | SSH key access | Credential Theft | rules | CWE-522 |

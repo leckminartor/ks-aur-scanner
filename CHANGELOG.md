@@ -4,6 +4,45 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-08-06
+
+### Added — ATOMIC-011: Embedded ELF helper execution in build()/package() (no sudo)
+
+A further Wave-3 (Aug 2026) Atomic Arch variant embeds compiled ELF binaries
+directly into the PKGBUILD build script under a benign tool name (linter,
+minifier, parser, assembler, translator, optimizer). The helper runs during
+`makepkg` with **no network call and no npm/bun cache**, so it evades the
+earlier delivery-based detection (ATOMIC-001/002). ATOMIC-005 already catches
+the root-elevation form (`sudo "$srcdir/<helper>"`); ATOMIC-011 extends coverage
+to the **sudo-free execution** and to the **`chmod +x` preparation step**.
+
+- **ATOMIC-011 — Embedded ELF helper execution (no sudo)**: Flags a
+  `build()`/`package()` step that executes a `$srcdir` source-tree file under a
+  benign tool name as a command (start-of-line, or after `;`/`|`/`&`/`&&`/a
+  newline, or a command-position keyword like `then`/`do`/`else`, or a subshell
+  open) — but **not** as an argument to `install`/`cp`/`mv` (legitimate). Also
+  flags the `chmod +x` preparation of such a helper, covering symbolic who forms
+  (`u+x`, `ug+x`, `a+x`, `+x`), flag forms (`chmod -R +x`), and numeric modes
+  (`chmod 755`). The tool name must be a complete path component, so
+  `optimizer.bin` / `linter-helper` do not false-fire.
+
+### Notes
+
+- Legitimate PKGBUILDs do not execute arbitrary source files under these tool
+  names during the build phase — they use `make`/`configure` or `install` them.
+- The `${srcdir}` brace form, indentation, and `chmod` who/numeric variants are
+  all handled; the undo/redo false-positive (a helper that is later removed)
+  and the `optimizer.bin` suffix false-positive are explicitly excluded.
+
+### Verification
+
+- **Dual-LLM code review** (code-quality + security-architecture) — all HIGH
+  and CRITICAL findings addressed (indentation, `${srcdir}` brace, undo/redo
+  FP, `chmod` who/numeric, `optimizer.bin` FP).
+- **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
+  `archlinux:latest`): `cargo build --release --workspace` + `cargo test`.
+- Workspace test suite: **233 tests green**.
+
 ## [2.2.0] - 2026-08-05
 
 ### Added — "Atomic Arch Wave 3" two-stage loader/stealer coverage (July/Aug 2026)
