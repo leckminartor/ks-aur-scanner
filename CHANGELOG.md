@@ -586,6 +586,6 @@ automation, and the validation checklist in the PR before promoting to stable.
 
 See the project history prior to the introduction of this changelog.
 
-[2.5.0]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v2.5.0
-[2.0.0]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v2.0.0
-[1.1.0-rc1]: https://github.com/KiefStudioMA/ks-aur-scanner/releases/tag/v1.1.0-rc1
+[2.5.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.5.0
+[2.0.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.0.0
+[1.1.0-rc1]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.1.0-rc1

@@ -11,7 +11,7 @@
 [![AUR version](https://img.shields.io/aur/version/aur-scanner?logo=archlinux&logoColor=white&label=AUR)](https://aur.archlinux.org/packages/aur-scanner)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Built with Rust](https://img.shields.io/badge/built_with-Rust-dea584?logo=rust&logoColor=white)](https://www.rust-lang.org)
-[![GPG-signed releases](https://img.shields.io/badge/releases-GPG_signed-2ea44f?logo=gnuprivacyguard&logoColor=white)](https://github.com/KiefStudioMA/ks-aur-scanner/releases)
+[![GPG-signed releases](https://img.shields.io/badge/releases-GPG_signed-2ea44f?logo=gnuprivacyguard&logoColor=white)](https://github.com/leckminartor/ks-aur-scanner/releases)
 [![Static analysis only](https://img.shields.io/badge/scanner-static_only-2ea44f.svg)](#security)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-2ea44f.svg)](CONTRIBUTING.md)
 [![Code of Conduct](https://img.shields.io/badge/code_of_conduct-v2.1-blueviolet.svg)](CODE_OF_CONDUCT.md)
@@ -157,7 +157,7 @@ gpg --recv-keys 25631EAE3F43999050B7D7021132BF893C33FB51
 ### From Source
 
 ```bash
-git clone https://github.com/KiefStudioMA/ks-aur-scanner.git
+git clone https://github.com/leckminartor/ks-aur-scanner.git
 cd ks-aur-scanner
 cargo build --release
 ```
@@ -1048,7 +1048,7 @@ source ~/.cargo/env
 
 ```bash
 # Clone repository
-git clone https://github.com/KiefStudioMA/ks-aur-scanner.git
+git clone https://github.com/leckminartor/ks-aur-scanner.git
 cd ks-aur-scanner
 
 # Build release version (optimized)
@@ -1138,7 +1138,7 @@ auditable [detection catalog](#detection-rules-reference) and the community
 [`rules.d/`](#custom--community-rules) format is so anyone can extend it without
 touching the core.
 
-Good places to start (look for [`good first issue`](https://github.com/KiefStudioMA/ks-aur-scanner/labels/good%20first%20issue)):
+Good places to start (look for [`good first issue`](https://github.com/leckminartor/ks-aur-scanner/labels/good%20first%20issue)):
 
 - **Detection rules** — patterns for emerging threats, as a community TOML rule or a built-in
 - **False-positive fixes** — tighten a pattern that cries wolf (like the `chmod 755` one we fixed in 1.0.2)
@@ -1205,7 +1205,7 @@ Some of the above were brought in by cherry-pick rather than the merge button �
 - [**@zebulon2**](https://github.com/zebulon2) — [#10](https://github.com/KiefStudioMA/ks-aur-scanner/issues/10): reported the obfuscated `bun install` payload class the anti-evasion hardening targets
 - [**@nikoraasu**](https://github.com/nikoraasu) — [#12](https://github.com/KiefStudioMA/ks-aur-scanner/issues/12): diagnosed that the shell wrapper only gated `-S`-style operations, shaping the operation classifier and broader AUR-helper coverage
 
-Sent a PR? Add yourself here. See the full list on the [contributors page](https://github.com/KiefStudioMA/ks-aur-scanner/graphs/contributors).
+Sent a PR? Add yourself here. See the full list on the [contributors page](https://github.com/leckminartor/ks-aur-scanner/graphs/contributors).
 
 ### References
 
@@ -1235,8 +1235,8 @@ The AUR is an inherently trust-based system where users are expected to verify p
 
 - **AUR Package:** [aur-scanner](https://aur.archlinux.org/packages/aur-scanner) (stable, recommended) — also [`aur-scanner-rc`](https://aur.archlinux.org/packages/aur-scanner-rc) (release candidate) and [`aur-scanner-git`](https://aur.archlinux.org/packages/aur-scanner-git) (rolling)
 - **Docs:** [https://aur-scanner.kief.studio](https://aur-scanner.kief.studio)
-- **Repository:** [https://github.com/KiefStudioMA/ks-aur-scanner](https://github.com/KiefStudioMA/ks-aur-scanner)
+- **Repository:** [https://github.com/leckminartor/ks-aur-scanner](https://github.com/leckminartor/ks-aur-scanner)
 - **Crates.io:** [aur-scanner-core](https://crates.io/crates/aur-scanner-core)
 - **Homepage:** [https://kief.studio](https://kief.studio)
-- **Issues:** [https://github.com/KiefStudioMA/ks-aur-scanner/issues](https://github.com/KiefStudioMA/ks-aur-scanner/issues)
+- **Issues:** [https://github.com/leckminartor/ks-aur-scanner/issues](https://github.com/leckminartor/ks-aur-scanner/issues)
 - **License:** [GPL-3.0-or-later](LICENSE)

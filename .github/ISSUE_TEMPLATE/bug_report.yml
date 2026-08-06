@@ -8,7 +8,7 @@ body:
         Thanks for the report. If this is a **security** issue — including a
         *false negative* (a malicious pattern that should be flagged but isn't, or
         a scan that errors yet reports "clean") — do **not** file it here. See
-        [SECURITY.md](https://github.com/KiefStudioMA/ks-aur-scanner/blob/main/SECURITY.md).
+        [SECURITY.md](https://github.com/leckminartor/ks-aur-scanner/blob/main/SECURITY.md).
   - type: input
     id: version
     attributes:
