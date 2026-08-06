@@ -371,9 +371,10 @@ database (see below) and runs the provenance check (flagging any package that
 ### aur-scan ioc
 
 Show or query the local IOC (indicator-of-compromise) database — known-malicious
-payload packages, file artifacts, C2 domains, and campaign metadata. The
-database is embedded and can be extended from a feed (drop a file at
-`/usr/share/aur-scanner/ioc.toml` or `~/.local/share/aur-scanner/ioc.toml`).
+payload packages, file artifacts, C2 domains, payload hashes, C2 static public
+keys, and campaign metadata. The database is embedded and can be extended from
+a feed (drop a file at `/usr/share/aur-scanner/ioc.toml` or
+`~/.local/share/aur-scanner/ioc.toml`).
 
 ```bash
 aur-scan ioc                 # show database stats + campaigns

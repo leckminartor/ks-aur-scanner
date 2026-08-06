@@ -23,7 +23,7 @@
 #   /etc/aur-scanner/ioc.toml
 #   $XDG_DATA_HOME/aur-scanner/ioc.toml  (default ~/.local/share/aur-scanner/ioc.toml)
 
-schema_version = 1
+schema_version = 2
 updated = "2026-08-06"
 
 [[campaigns]]
@@ -98,3 +98,15 @@ reference = "https://gist.github.com/orhun/a966583226df9b160e180ecf0ea9dcb6"
 "6144d433f8a0316869877b5f834c801251bbb936e5f1577c5680878c7443c98b" = "atomic-arch-2026-06"
 # Wave 1-2 (June 2026) ~/.local/bin/sudo credential-shim (steals sudo passwords)
 "fd4852334ce1c2d7c9bf0e1c91dbf274a1247989b4827d4f7758cbf3bf42ebfe" = "atomic-arch-2026-06"
+# Wave 3 (July 2026) meshcore-open-git malicious PKGBUILD (source: orhun gist)
+"6126c3e44406592f002ce9465014c2fe869bd8f308e2c86286f6a13042e521e1" = "atomic-arch-2026-08"
+# Wave 3 (July 2026) malicious AUR snapshot tarball (source: orhun gist)
+"b97a762f886fa62a3908568cdf8695409d9d5e42a9f85e0ff5ee737f172c78d4" = "atomic-arch-2026-08"
+
+# C2 / exfil static crypto public keys (e.g. X25519 server pubkey) embedded in
+# the agent. Distinct from payload hashes: a key authenticates/encrypts the C2
+# channel. Populate from live feeds.
+[pubkeys]
+# Wave 3 (July 2026) stage-2 Rust infostealer/RAT/SSH-worm — C2 X25519 server
+# static public key (source: ysf stage-2 analysis gist)
+"2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48" = "atomic-arch-2026-08"

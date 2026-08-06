@@ -12,6 +12,7 @@ use crate::textutil::deobfuscate_text;
 use crate::threat_intel::IocDatabase;
 use crate::types::{AnalysisContext, Category, Finding, Location, Severity};
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -148,12 +149,82 @@ impl SecurityAnalyzer for IocAnalyzer {
             self.scan_file(context, &install.path, &install.content, &mut findings);
         }
 
+        // File-hash IOC matching: a PKGBUILD/install script does not contain its
+        // own SHA-256 in its text, so a `db.sha256` payload-hash indicator (e.g.
+        // the meshcore-open-git malicious PKGBUILD) can never fire via
+        // scan_content. Hash the actual file bytes and compare against the
+        // database so those indicators are actually effective, not advisory.
+        self.scan_file_hash(context, &context.file_path, &mut findings);
+        if let Some(install) = &context.install_script {
+            self.scan_file_hash(context, &install.path, &mut findings);
+        }
+
         Ok(findings)
     }
 
     fn name(&self) -> &str {
         "ioc"
     }
+}
+
+impl IocAnalyzer {
+    /// Compute the SHA-256 of a scanned file's bytes and, if it matches a known
+    /// `db.sha256` payload-hash indicator, emit an IOC finding. Distinct from
+    /// `scan_file`, which matches indicator strings *inside* the text.
+    fn scan_file_hash(
+        &self,
+        context: &AnalysisContext,
+        file: &std::path::Path,
+        findings: &mut Vec<Finding>,
+    ) {
+        // Only hash files we have actual bytes for. In static scans the content
+        // is parsed from a string; resolve the on-disk path when it exists.
+        let Ok(bytes) = std::fs::read(file) else {
+            return;
+        };
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let digest = hex_digest(&hasher.finalize());
+
+        if let Some(campaign) = self.db.match_sha256(&digest) {
+            let campaign_name = self.db.campaign(campaign).map(|c| c.name.clone());
+            let campaign_suffix = campaign_name
+                .map(|n| format!(" (campaign: {n})"))
+                .unwrap_or_default();
+            findings.push(Finding {
+                id: "IOC-001".to_string(),
+                severity: Severity::Critical,
+                category: Category::MaliciousCode,
+                title: format!("Known IOC: SHA-256 payload hash '{}'", digest),
+                description: format!(
+                    "The file's SHA-256 matches a known indicator of compromise: \
+                     malicious payload hash '{digest}'{campaign_suffix}."
+                ),
+                location: Location {
+                    file: file.to_path_buf(),
+                    line: None,
+                    column: None,
+                    snippet: None,
+                },
+                recommendation:
+                    "Do NOT build. This file matches a known-malicious payload hash; treat \
+                     the host as compromised if already built and rotate credentials."
+                        .to_string(),
+                cwe_id: Some("CWE-506".to_string()),
+                metadata: serde_json::json!({
+                    "ioc_kind": "Sha256",
+                    "ioc_value": digest,
+                    "campaign": campaign,
+                    "context": context.file_path.to_string_lossy(),
+                }),
+            });
+        }
+    }
+}
+
+/// Render a SHA-256 digest as a lowercase hex string.
+fn hex_digest(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -243,5 +314,50 @@ mod tests {
             !findings.iter().any(|f| f.id == "IOC-001"),
             "a printed message naming an IOC must not raise IOC-001: {findings:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn file_hash_ioc_matches_known_payload_hash() {
+        // The file-hash hook closes the "file hash never appears in text"
+        // detection escape: a scanned file whose on-disk SHA-256 equals a known
+        // `db.sha256` payload hash must raise IOC-001 even though its text does
+        // not reference the hash. We write a temp file with the known
+        // ~/.local/bin/sudo shim content hash (fd485233…) and scan it.
+        use crate::threat_intel::ioc::IocDatabase;
+
+        let tmp = std::env::temp_dir().join(format!("aur-ioc-hash-test-{}", std::process::id()));
+        // Any content is fine — we assert on the DB-hash match mechanism by
+        // injecting the computed hash into a fresh DB.
+        std::fs::write(&tmp, b"#!/bin/sh\nexec /usr/bin/sudo -n true\n").unwrap();
+
+        let mut db = IocDatabase::embedded();
+        // Compute the file's real sha256 and register it as a known payload hash.
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(std::fs::read(&tmp).unwrap());
+        let hex: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        db.sha256.insert(hex.clone(), "atomic-arch-2026-06".to_string());
+
+        let parser = StaticParser::new();
+        let pkgbuild = parser
+            .parse("pkgname=x\npkgver=1\npkgrel=1\npackage() { :; }\n")
+            .unwrap();
+        let context = AnalysisContext {
+            pkgbuild,
+            install_script: None,
+            hook_file: None,
+            config: ScanConfig::default(),
+            file_path: tmp.clone(),
+        };
+        let analyzer = IocAnalyzer::new(Arc::new(db));
+        let findings = analyzer.analyze(&context).await.unwrap();
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.id == "IOC-001" && f.metadata["ioc_value"] == hex),
+            "file-hash IOC must fire on a matching on-disk payload hash: {findings:?}"
+        );
+
+        let _ = std::fs::remove_file(&tmp);
     }
 }

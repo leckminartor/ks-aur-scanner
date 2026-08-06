@@ -37,6 +37,34 @@ catches the `hidden_pids` indicator instead of the previous bare-token-only
 detection escape. Basename equality is exactly as specific as a whole-token
 match (no substring over-match), so this adds no false-positive risk.
 
+### Added — new verified Wave-3 (July/Aug 2026) indicators + `pubkeys` category
+
+A second research round added two **new, source-verified** Wave-3 indicators
+and a new IOC category (schema 1 → 2):
+
+- **New `pubkeys` category:** C2 / exfil static **crypto public keys** (e.g. an
+  X25519 server static pubkey the agent embeds to authenticate/encrypt its C2
+  channel), distinct from payload SHA-256 hashes. Matched whole-token,
+  case-insensitively.
+- **C2 X25519 server static pubkey** `2d15205b…b6a48` of the Wave-3 stage-2 Rust
+  infostealer/RAT/SSH-worm (source: ysf stage-2 analysis gist) →
+  `atomic-arch-2026-08`.
+- **meshcore-open-git malicious PKGBUILD SHA-256** `6126c3e4…521e1`
+  (source: orhun/aur-report.md gist) → `atomic-arch-2026-08`.
+- **malicious AUR snapshot tarball SHA-256** `b97a762f…78d4`
+  (source: orhun/aur-report.md gist) → `atomic-arch-2026-08`.
+
+The database now carries **22 indicators**. New regression tests cover the
+PKGBUILD-hash whole-token match, the C2-pubkey whole-token + case-insensitive
+match, the pubkey-vs-sha256 semantic distinction, and a file-hash hook test.
+
+The IOC analyzer now also **hashes scanned files** (a security-architecture
+review finding): a `db.sha256` payload hash that lives in a file *bytes* — not
+its text — can never fire via text matching alone, so `analyze()` now computes
+the SHA-256 of the PKGBUILD and install script on disk and matches it against
+`db.sha256`. This makes the `6126c3e4…` PKGBUILD hash and `b97a762f…` snapshot
+hash actually effective instead of advisory-only.
+
 ### Verification
 
 - **Dual-LLM review** (code-quality + security-architecture). Both reviewers
@@ -48,8 +76,8 @@ match (no substring over-match), so this adds no false-positive risk.
   TOML parses with no duplicate keys and every new test is valid and correct.
 - **Tested in a fresh Arch Distrobox container** (`aur-shield-test`,
   `archlinux:latest`): `cargo build --release --workspace` + `cargo test`
-  (**258 core tests green**, 2 ignored live-network). `aur-scan ioc` shows the
-  expanded indicator set.
+  (**262 core tests green**, 2 ignored live-network). `aur-scan ioc` shows the
+  expanded indicator set including the new `pubkeys` category.
 
 ## [2.4.1] - 2026-08-06
 

@@ -61,6 +61,11 @@ pub struct IocDatabase {
     /// SHA-256 of a malicious payload -> campaign id.
     #[serde(default)]
     pub sha256: HashMap<String, String>,
+    /// C2 / exfil crypto static public key (e.g. X25519 server pubkey) ->
+    /// campaign id. Distinct from payload hashes: this is a cryptographic key
+    /// the agent embeds to authenticate/encrypt its C2 channel, not a file hash.
+    #[serde(default)]
+    pub pubkeys: HashMap<String, String>,
 }
 
 /// The class of indicator that matched.
@@ -74,6 +79,8 @@ pub enum IocKind {
     Domain,
     /// A SHA-256 payload hash.
     Sha256,
+    /// A C2 / exfil crypto static public key.
+    PubKey,
 }
 
 impl IocKind {
@@ -84,6 +91,7 @@ impl IocKind {
             IocKind::FileArtifact => "payload file artifact",
             IocKind::Domain => "C2/exfil domain",
             IocKind::Sha256 => "SHA-256 payload hash",
+            IocKind::PubKey => "C2/exfil static public key",
         }
     }
 }
@@ -158,6 +166,7 @@ impl IocDatabase {
         self.files.extend(other.files);
         self.domains.extend(other.domains);
         self.sha256.extend(other.sha256);
+        self.pubkeys.extend(other.pubkeys);
     }
 
     /// Total number of indicators across all classes.
@@ -167,6 +176,7 @@ impl IocDatabase {
             + self.files.len()
             + self.domains.len()
             + self.sha256.len()
+            + self.pubkeys.len()
     }
 
     /// Look up campaign metadata by id.
@@ -185,8 +195,10 @@ impl IocDatabase {
         self.sha256.get(&lc).map(String::as_str)
     }
 
-    /// Scan free-text content for npm-package, file-artifact, and domain
-    /// indicators. Whole-token matches only, to avoid substring false positives.
+    /// Scan free-text content for npm-package, file-artifact, sha256-hash,
+    /// pubkey, and domain indicators. Whole-token matches only, to avoid
+    /// substring false positives (file artifacts additionally match on the
+    /// basename of a `/`-path token).
     pub fn scan_content(&self, content: &str) -> Vec<IocHit> {
         let mut hits = Vec::new();
         for (line_idx, line) in content.lines().enumerate() {
@@ -205,6 +217,7 @@ impl IocDatabase {
                 (&self.npm_packages, IocKind::NpmPackage),
                 (&self.files, IocKind::FileArtifact),
                 (&self.sha256, IocKind::Sha256),
+                (&self.pubkeys, IocKind::PubKey),
             ] {
                 for (indicator, campaign) in map {
                     // Case-insensitive whole-token match (sha256 in PKGBUILDs is
@@ -216,7 +229,7 @@ impl IocDatabase {
                     // indicator. Basename equality is exactly as specific as a
                     // bare-token match (no substring / prefix over-match), so it
                     // adds no false-positive risk and closes the path-form
-                    // detection escape. npm/sha256 stay whole-token only.
+                    // detection escape. npm/sha256/pubkeys stay whole-token only.
                     let basename = if matches!(kind, IocKind::FileArtifact) {
                         tokens.iter().any(|t| {
                             t.rsplit('/')
@@ -275,6 +288,80 @@ mod tests {
         assert!(db.npm_packages.contains_key("js-digest"));
         assert!(db.files.contains_key("scales.bpf.c"));
         assert!(db.campaign("atomic-arch-2026-06").is_some());
+    }
+
+    #[test]
+    fn v250_db_has_expanded_wave3_pkgbuild_hash_and_c2_pubkey() {
+        // v2.5.0 second-round expansion: the meshcore-open-git malicious PKGBUILD
+        // hash (orhun gist) and the Wave-3 stage-2 C2 X25519 server static pubkey
+        // (ysf gist) must both be present in the embedded database.
+        let db = IocDatabase::embedded();
+        assert!(db
+            .sha256
+            .contains_key("6126c3e44406592f002ce9465014c2fe869bd8f308e2c86286f6a13042e521e1"));
+        assert!(db
+            .pubkeys
+            .contains_key("2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48"));
+        // Both belong to the Wave-3 campaign.
+        assert_eq!(
+            db.sha256
+                .get("6126c3e44406592f002ce9465014c2fe869bd8f308e2c86286f6a13042e521e1")
+                .map(String::as_str),
+            Some("atomic-arch-2026-08")
+        );
+        assert_eq!(
+            db.pubkeys
+                .get("2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48")
+                .map(String::as_str),
+            Some("atomic-arch-2026-08")
+        );
+    }
+
+    #[test]
+    fn v250_scan_detects_wave3_pkgbuild_hash() {
+        // The malicious meshcore-open-git PKGBUILD hash must match as a whole token.
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "sha256sums=('SKIP' '6126c3e44406592f002ce9465014c2fe869bd8f308e2c86286f6a13042e521e1')",
+        );
+        assert!(
+            hits.iter().any(|h| h.kind == IocKind::Sha256
+                && h.value == "6126c3e44406592f002ce9465014c2fe869bd8f308e2c86286f6a13042e521e1"),
+            "embedded Wave-3 PKGBUILD hash IOC must match: {hits:?}"
+        );
+    }
+
+    #[test]
+    fn v250_scan_detects_wave3_c2_pubkey() {
+        // The Wave-3 stage-2 C2 X25519 server static pubkey must match as a whole
+        // token, case-insensitively (hex keys may be uppercase in the wild).
+        let db = IocDatabase::embedded();
+        let hits = db.scan_content(
+            "pubkey=2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48",
+        );
+        assert!(
+            hits.iter().any(|h| h.kind == IocKind::PubKey
+                && h.value == "2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48"),
+            "embedded Wave-3 C2 pubkey IOC must match: {hits:?}"
+        );
+        let upper = db.scan_content(
+            "pubkey=2D15205B422F6137AB08C728E2AE0CA38D07B5153723B373D12532D8BEBB6A48",
+        );
+        assert!(
+            upper.iter().any(|h| h.kind == IocKind::PubKey),
+            "uppercase C2 pubkey must match case-insensitively: {upper:?}"
+        );
+    }
+
+    #[test]
+    fn v250_pubkey_indicator_does_not_collide_with_sha256() {
+        // A pubkey lives in its own category and must NOT be reported as a sha256
+        // payload-hash match (semantic distinction).
+        let db = IocDatabase::embedded();
+        let hits =
+            db.scan_content("key=2d15205b422f6137ab08c728e2ae0ca38d07b5153723b373d12532d8bebb6a48");
+        assert!(hits.iter().any(|h| h.kind == IocKind::PubKey));
+        assert!(!hits.iter().any(|h| h.kind == IocKind::Sha256));
     }
 
     #[test]

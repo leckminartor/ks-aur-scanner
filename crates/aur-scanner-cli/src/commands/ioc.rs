@@ -30,12 +30,13 @@ pub fn run(check: Option<&str>) -> Result<()> {
         db.indicator_count().to_string().bold()
     );
     println!(
-        "    npm/bun packages {}, fake AUR packages {}, file artifacts {}, domains {}, hashes {}",
+        "    npm/bun packages {}, fake AUR packages {}, file artifacts {}, domains {}, hashes {}, pubkeys {}",
         db.npm_packages.len(),
         db.aur_packages.len(),
         db.files.len(),
         db.domains.len(),
         db.sha256.len(),
+        db.pubkeys.len(),
     );
     println!();
 
@@ -83,6 +84,10 @@ fn run_check(db: &IocDatabase, value: &str) -> Result<()> {
     if let Some(campaign) = db.match_sha256(value) {
         matched = true;
         report_hit(db, "malicious payload hash", value, campaign);
+    }
+    if let Some(campaign) = db.pubkeys.get(&value.to_lowercase()) {
+        matched = true;
+        report_hit(db, "C2/exfil static public key", value, campaign);
     }
 
     if !matched {
