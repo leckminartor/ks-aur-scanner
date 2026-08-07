@@ -515,7 +515,7 @@ adversarial gap analysis of the catalog. **Release candidate.**
 - The fail-closed wrapper and the privilege-dropping pacman hook gained unit
   tests for their deny/refuse/validation paths.
 
-## [1.1.0-rc1] - 2026-06-13
+## [1.1.0-rc1] - 2026-06-14
 
 Security-hardening release resolving a full security & quality audit of the
 scanner. **Release candidate** — see "Behavior changes" below before upgrading
@@ -582,10 +582,19 @@ automation, and the validation checklist in the PR before promoting to stable.
 - The `--locked` updates to the tagged-package PKGBUILDs live in their own AUR
   repositories and are released separately.
 
-## [1.0.3]
+## [1.0.3] - 2026-06-13
 
 See the project history prior to the introduction of this changelog.
 
 [2.5.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.5.0
+[2.4.1]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.4.1
+[2.4.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.4.0
+[2.3.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.3.0
+[2.2.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.2.0
+[2.1.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.1.0
 [2.0.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v2.0.0
+[1.1.0]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.1.0
+[1.1.0-rc3]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.1.0-rc3
+[1.1.0-rc2]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.1.0-rc2
 [1.1.0-rc1]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.1.0-rc1
+[1.0.3]: https://github.com/leckminartor/ks-aur-scanner/releases/tag/v1.0.3
