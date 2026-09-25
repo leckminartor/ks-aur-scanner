@@ -2,7 +2,8 @@
 //!
 //! Wave-3 (Aug 2026) Atomic Arch packages embed a *compiled ELF binary* into
 //! the AUR git repo under a benign tool name (linter, minifier, parser,
-//! assembler, translator, optimizer) and execute it from `build()`/`package()`.
+//! assembler, translator, optimizer, validator) and execute it from
+//! `build()`/`package()`.
 //! ATOMIC-011 (a text rule in `rules/mod.rs`) already flags the execution line;
 //! this analyzer supplies the *confirming* half: that the file on disk really is
 //! a compiled ELF and not, say, a shell wrapper or an empty placeholder.
@@ -36,6 +37,7 @@ const DISGUISE_NAMES: &[&str] = &[
     "assembler",
     "translator",
     "optimizer",
+    "validator",
 ];
 
 /// Function names in a PKGBUILD whose bodies we check for execution of a
@@ -493,6 +495,35 @@ mod tests {
     }
 
     #[test]
+    fn elf_validator_executed_in_build_is_critical() {
+        // v2.5.1 regression for the openconnect-sso Wave-3 anchor package:
+        // the malicious commit added a stripped ELF named "validator" as a new
+        // source file and executed it during packaging. The sudo form is caught
+        // by ATOMIC-005's generic $srcdir pattern; this test pins the sudo-free
+        // execution + binary-confirmation half (ATOMIC-011 + ATOMIC-012).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(
+            root.join("validator"),
+            [0x7f, b'E', b'L', b'F', 2, 1, 1, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+        let pkgbuild = pkgbuild_with_build("  \"$srcdir/validator\" --verify");
+        let analyzer = ElfAnalyzer::new();
+        let findings = analyzer.analyze_tree(root, &pkgbuild);
+        let f = findings
+            .iter()
+            .find(|f| f.id == "ATOMIC-012")
+            .expect("ATOMIC-012 should fire for 'validator'");
+        assert_eq!(
+            f.severity,
+            Severity::Critical,
+            "'validator' ELF executed in build() must be Critical"
+        );
+        assert_eq!(f.metadata["executed_in_build"], true);
+    }
+
+    #[test]
     fn elf_chmodded_in_build_is_critical() {
         // The Wave-3 preparation step (chmod +x) also elevates to Critical.
         let dir = tempfile::tempdir().unwrap();
@@ -641,6 +672,8 @@ mod tests {
         assert!(executed_in_build(&pkgbuild_with_build("cd \"$srcdir\" && ./assembler"), "assembler"));
         assert!(executed_in_build(&pkgbuild_with_build("\"$srcdir/translator\" --in x"), "translator"));
         assert!(executed_in_build(&pkgbuild_with_build("    \"${srcdir}/minifier\""), "minifier"));
+        // v2.5.1: openconnect-sso anchor — "validator" is in DISGUISE_NAMES.
+        assert!(executed_in_build(&pkgbuild_with_build("\"$srcdir/validator\" --verify"), "validator"));
     }
 
     #[test]

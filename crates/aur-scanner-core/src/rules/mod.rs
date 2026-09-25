@@ -1939,7 +1939,7 @@ pub fn get_builtin_rules() -> Vec<Rule> {
         Rule {
             id: "ATOMIC-011".to_string(),
             name: "Embedded ELF helper execution in build()/package() (no sudo)".to_string(),
-            description: "A build()/package() step executes a source-tree file in $srcdir that is disguised under a benign tool name (linter, minifier, parser, assembler, translator, optimizer) WITHOUT sudo. This is the Wave-3 (Aug 2026) Atomic Arch variant that embeds compiled ELF binaries directly into the PKGBUILD build script: the helper runs during makepkg with no network call and no npm/bun cache, so it evades the earlier delivery-based detection. ATOMIC-005 already catches the root-elevation form (`sudo \"$srcdir/<helper>\"`); ATOMIC-011 extends coverage to the sudo-free execution and to the chmod +x preparation step. Legitimate PKGBUILDs do not execute arbitrary source files under these tool names during the build phase (they use make/configure or install them).".to_string(),
+            description: "A build()/package() step executes a source-tree file in $srcdir that is disguised under a benign tool name (linter, minifier, parser, assembler, translator, optimizer, validator) WITHOUT sudo. This is the Wave-3 (Aug 2026) Atomic Arch variant that embeds compiled ELF binaries directly into the PKGBUILD build script: the helper runs during makepkg with no network call and no npm/bun cache, so it evades the earlier delivery-based detection. ATOMIC-005 already catches the root-elevation form (`sudo \"$srcdir/<helper>\"`); ATOMIC-011 extends coverage to the sudo-free execution and to the chmod +x preparation step. Legitimate PKGBUILDs do not execute arbitrary source files under these tool names during the build phase (they use make/configure or install them).".to_string(),
             severity: Severity::Critical,
             category: Category::MaliciousCode,
             patterns: vec![
@@ -1948,7 +1948,7 @@ pub fn get_builtin_rules() -> Vec<Rule> {
                 // command-position keyword like then/do/else, or a subshell open)
                 // — NOT as an argument to install/cp/mv (which is legitimate).
                 Pattern::Regex {
-                    pattern: r#"(^\s*|[;&|]\s*|&&\s*|\bthen\s*|\bdo\s*|\belse\s*|\(\s*)["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)"#
+                    pattern: r#"(^\s*|[;&|]\s*|&&\s*|\bthen\s*|\bdo\s*|\belse\s*|\(\s*)["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer|validator)(?:["'\s/]|$)"#
                         .to_string(),
                 },
                 // chmod +x preparation of a $srcdir helper under a benign tool
@@ -1959,7 +1959,7 @@ pub fn get_builtin_rules() -> Vec<Rule> {
                 // component (followed by quote/whitespace/slash/end), so
                 // `optimizer.bin` / `linter-helper` do not false-fire.
                 Pattern::Regex {
-                    pattern: r#"chmod\s+(?:-[A-Za-z]+\s+)*[ugoa]*\+x\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)|chmod\s+(?:-[A-Za-z]+\s+)*[0-7]{3,4}\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer)(?:["'\s/]|$)"#
+                    pattern: r#"chmod\s+(?:-[A-Za-z]+\s+)*[ugoa]*\+x\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer|validator)(?:["'\s/]|$)|chmod\s+(?:-[A-Za-z]+\s+)*[0-7]{3,4}\s+["']?\$\{?srcdir\}?/(linter|minifier|parser|assembler|translator|optimizer|validator)(?:["'\s/]|$)"#
                         .to_string(),
                 },
             ],
@@ -3195,6 +3195,9 @@ mod tests {
             "sudo \"$srcdir/optimizer\"",
             "sudo $srcdir/optimizer",
             "sudo \"$srcdir/helper.sh\" --init",
+            // v2.5.1: openconnect-sso Wave-3 anchor — "validator" helper run
+            // with sudo during packaging (the reported delivery vector).
+            "sudo \"$srcdir/validator\" --check",
         ] {
             let m = engine.match_content(s, FileType::Pkgbuild);
             assert!(
@@ -3409,6 +3412,9 @@ mod tests {
             "chmod ug+x \"$srcdir/optimizer\"",
             "chmod -R +x \"$srcdir/assembler\"",
             "chmod 755 \"$srcdir/linter\"",
+            // v2.5.1: openconnect-sso Wave-3 anchor — "validator" helper.
+            "\"$srcdir/validator\"",
+            "chmod +x \"$srcdir/validator\"",
         ] {
             let m = engine.match_content(s, FileType::Pkgbuild);
             assert!(
@@ -3440,6 +3446,14 @@ mod tests {
             "undo $srcdir/linter",
             "redo $srcdir/linter",
             "chmod +x \"$srcdir/optimizer.bin\"",
+            // v2.5.1 review nit: validator-spezifische FP-Regressionen — der
+            // generischste Disguise-Name braucht dieselben Negativtests wie
+            // die anderen Namen (install/cp-Argument, Suffix-Formen).
+            "install -Dm755 \"$srcdir/validator\" \"$pkgdir/usr/bin/validator\"",
+            "cp \"$srcdir/validator\" \"$pkgdir/usr/bin/validator\"",
+            "validator \"$srcdir/config.json\"",
+            "chmod +x \"$srcdir/validator.bin\"",
+            "chmod +x \"$srcdir/validator-helpers\"",
         ] {
             let m = engine.match_content(s, FileType::Pkgbuild);
             assert!(

@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.5.1] - 2026-09-25
+
+### Added — `validator` disguise name (openconnect-sso Wave-3 anchor coverage)
+
+The late-July 2026 Atomic Arch wave's first confirmed malicious package,
+`openconnect-sso`, added a stripped ELF binary named **`validator`** to the
+package sources and executed it with `sudo` during packaging. The embedded-ELF
+detection chain (ATOMIC-011 text rule + ATOMIC-012 binary analyzer) recognized
+six disguise names (linter / minifier / parser / assembler / translator /
+optimizer) but not `validator`, leaving the sudo-free execution form of exactly
+this delivery undetected.
+
+- **ATOMIC-011** (`rules/mod.rs`): both regex patterns (direct execution and
+  `chmod +x` preparation) now match `$srcdir/validator` as well; rule
+  description updated.
+- **ATOMIC-012** (`analyzer/elf.rs`): `validator` added to `DISGUISE_NAMES`,
+  keeping the documented lockstep with ATOMIC-011's regex; module doc and
+  catalog description updated.
+- ATOMIC-005 already covers the reported root-elevation form
+  (`sudo "$srcdir/validator"`) via its generic `$srcdir` pattern — pinned with
+  a new test case.
+- New regression tests: `test_atomic011_embedded_elf_helper_fires` gains
+  `validator` execution and chmod cases; `test_atomic005_root_build_helper_fires`
+  gains the sudo-`validator` vector; `executed_in_build_detects_direct_and_srcdir_invocation`
+  gains a `validator` case; new end-to-end
+  `elf_validator_executed_in_build_is_critical` pins Critical severity +
+  `executed_in_build` correlation for the `validator` ELF.
+
+### Note — no new Atomic Arch wave since August 11
+
+Arch's aurweb 6.5.0 review gates (adoption approval queue) have held since
+2026-08-11; no post-freeze supply-chain incident has been reported as of
+2026-09-25. This release closes the detection gap for the July wave's anchor
+package, it is not a response to a new campaign.
+
 ## [2.5.0] - 2026-08-06
 
 ### Added — IOC database expansion (Atomic Arch June 2026 Wave 1-5 coverage)
