@@ -47,8 +47,8 @@ fail-closed wollen, setzen `multi_package_policy = "abort"`.
 ### Fixed — multi-package transaction handling
 
 *Semantik-Korrektur 2026-09-26 (v2.5.3): Der folgende Eintrag beschrieb das
-Verhalten ursprünglich als "the offending package is skipped". Das ist
-technisch unmöglich — ein pacman-PreTransaction-Hook kann keine einzelnen
+Verhalten ursprünglich so, als würde das bösartige Paket "skipped" (übersprungen).
+Das ist technisch unmöglich — ein pacman-PreTransaction-Hook kann keine einzelnen
 Targets entfernen. Was tatsächlich geschah: Die gesamte Transaktion lief
 mit Warnung durch, d.h. das CRITICAL-Paket wurde MITINSTALLIERT. v2.5.3
 korrigiert Warnung, Doku und Konfiguration (siehe 2.5.3-Eintrag).*

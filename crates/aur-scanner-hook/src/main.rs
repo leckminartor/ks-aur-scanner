@@ -70,9 +70,11 @@ async fn main() -> Result<()> {
     let mut scan_failed = false;
     // Track how many packages were actually scanned (i.e. had a PKGBUILD found
     // and analyzed). This distinguishes a single-package transaction (where a
-    // CRITICAL finding should abort — fail-closed) from a multi-package
-    // transaction (where the offending package should be skipped and the rest
-    // allowed to proceed, instead of aborting the entire transaction).
+    // CRITICAL finding aborts — fail-closed) from a multi-package transaction.
+    // In multi-package, the behavior depends on `multi_package_policy`:
+    // - warn (default): proceed with honest notice, offending package(s) WILL BE
+    //   INSTALLED unless the user aborts
+    // - abort: fail-closed — abort on ANY CRITICAL finding regardless of count
     let mut scanned_count: usize = 0;
     // Names of packages with CRITICAL findings, for the skip warning message.
     let mut critical_packages: Vec<String> = Vec::new();
@@ -147,10 +149,11 @@ async fn main() -> Result<()> {
     }
 
     // Fail-closed exit decision. Precedence: a scan failure always aborts
-    // (fail-closed). A critical finding aborts when it is the ONLY package in
-    // the transaction — but in a multi-package transaction the offending
-    // package is skipped (warned) and the rest is allowed to proceed, instead
-    // of aborting the entire transaction and blocking all the safe packages.
+    // (fail-closed). A critical finding aborts in single-package transactions
+    // and when multi_package_policy = Abort — fail-closed for ALL transaction
+    // sizes. With multi_package_policy = Warn (default) in multi-package
+    // transactions, CRITICAL findings proceed with an honest notice stating
+    // the offending package(s) WILL BE INSTALLED unless the user aborts.
     // High-severity only warns. The precedence/branch selection is a pure
     // function so the fail-closed contract is unit-testable; the messaging +
     // process exit stay here.
@@ -230,8 +233,9 @@ enum HookDecision {
     /// and/or the critical-skip notice when `warn_critical_skip`.
     Proceed {
         warn_high: bool,
-        /// True when at least one package had a CRITICAL finding but was
-        /// skipped (multi-package transaction) instead of aborting.
+        /// True when at least one package had a CRITICAL finding in a
+        /// multi-package transaction with `multi_package_policy = Warn`.
+        /// The offending package(s) WILL BE INSTALLED unless the user aborts.
         warn_critical_skip: bool,
     },
 }

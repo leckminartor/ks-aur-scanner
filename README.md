@@ -539,7 +539,7 @@ sudo cp /usr/share/aur-scan/aur-scan.hook.example /usr/share/libalpm/hooks/aur-s
 
 **Hook behavior:**
 - Triggers before the *install transaction* (after the build)
-- **Aborts the transaction on CRITICAL findings** (anywhere in the scanned PKGBUILD or its resolved `.install` scriptlet), and aborts fail-closed if a located PKGBUILD cannot be analyzed
+- **CRITICAL findings abort the transaction in single-package transactions and when `multi_package_policy = "abort"` (fail-closed). With the default `multi_package_policy = "warn"` in multi-package transactions, CRITICAL findings proceed with a prominent honest notice naming the offending package(s) and stating they WILL BE INSTALLED unless the user aborts.**
 - Warns on HIGH severity findings
 
 **Hook configuration** (`/usr/share/libalpm/hooks/aur-scan.hook`):
@@ -835,6 +835,11 @@ min_severity = "low"
 
 # Scan timeout in seconds
 timeout_seconds = 30
+
+# Hook behavior for CRITICAL findings in multi-package transactions:
+# - "warn"  (default): proceed with honest notice, offending package(s) WILL BE INSTALLED
+# - "abort"          : fail-closed — abort transaction on ANY CRITICAL finding
+multi_package_policy = "warn"
 
 # Opt-in threat intelligence — OFF by default (see "Threat Intelligence" below)
 enable_threat_intel = false
