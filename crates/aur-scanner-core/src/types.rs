@@ -191,6 +191,40 @@ impl ScanResult {
     }
 }
 
+/// Policy for CRITICAL findings in multi-package transactions (pacman hook).
+///
+/// A pacman `PreTransaction` hook can only abort the WHOLE transaction
+/// (non-zero exit with `AbortOnFail`) or let the WHOLE transaction through —
+/// it cannot remove individual targets. So a CRITICAL finding in a
+/// multi-package transaction either blocks every package (including all the
+/// safe ones) or lets every package through (including the offending one).
+/// This policy chooses that trade-off explicitly; it does NOT change what
+/// pacman installs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MultiPackagePolicy {
+    /// Let the transaction through with a prominent warning that names the
+    /// offending package(s) AND states plainly that they WILL be installed.
+    Warn,
+    /// Abort the whole transaction (fail-closed; the pre-merge behavior).
+    Abort,
+}
+
+impl Default for MultiPackagePolicy {
+    fn default() -> Self {
+        Self::Warn
+    }
+}
+
+impl std::fmt::Display for MultiPackagePolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Warn => write!(f, "warn"),
+            Self::Abort => write!(f, "abort"),
+        }
+    }
+}
+
 /// Configuration for the scanner
 #[derive(Debug, Clone, Deserialize)]
 pub struct ScanConfig {
@@ -211,6 +245,10 @@ pub struct ScanConfig {
     /// Scan timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout_seconds: u64,
+    /// What the pacman hook does with a CRITICAL finding in a multi-package
+    /// transaction (see [`MultiPackagePolicy`]). Default: `warn`.
+    #[serde(default)]
+    pub multi_package_policy: MultiPackagePolicy,
 }
 
 fn default_timeout() -> u64 {
@@ -226,6 +264,7 @@ impl Default for ScanConfig {
             threat_intel: ThreatIntelConfig::default(),
             cache: CacheConfig::default(),
             timeout_seconds: default_timeout(),
+            multi_package_policy: MultiPackagePolicy::default(),
         }
     }
 }

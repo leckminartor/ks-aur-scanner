@@ -4,11 +4,56 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.5.3] - 2026-09-26
+
+### Fixed — ehrliche Multi-Package-Semantik + konfigurierbare Policy (Security-Review-Follow-up)
+
+Der Security-Architektur-Review des v2.5.2-Merges stellte fest, dass die
+"Skip"-Semantik **nicht real** ist: Ein pacman-`PreTransaction`-Hook mit
+`AbortOnFail` kann nur die GESAMTE Transaktion abbrechen (exit ≠ 0) oder
+komplett durchlassen (exit 0) — es gibt keinen Mechanismus, einzelne Targets
+zu entfernen. Das CRITICAL-Paket wurde also tatsächlich **mitinstalliert**,
+während Warnung und CHANGELOG ("Skipping these package(s)") das Gegenteil
+behaupteten — False Assurance.
+
+- **Ehrliche Warnung**: Der Proceed-Hinweis nennt die betroffenen Pakete und
+  sagt ausdrücklich, dass ein pacman-Hook einzelne Targets nicht entfernen
+  kann und diese Pakete **installiert werden**, sofern der Nutzer nicht
+  abbricht. Kein "Skipping"-Spruch mehr. Auch der Hinweis, wie man auf
+  fail-closed umschaltet, steht in der Meldung.
+- **Neue Config-Option** `multi_package_policy = "warn" | "abort"` (Default:
+  `warn`) in `/etc/aur-scanner/config.toml` (über `ScanConfig`):
+  - `warn` (Default): Transaktion läuft mit der ehrlichen Warnung durch.
+  - `abort`: stellt das ursprüngliche fail-closed-Verhalten wieder her —
+    jede CRITICAL-Finding bricht die Transaktion ab, unabhängig von der
+    Paketanzahl.
+- **Semantik-Dokumentation**: `MultiPackagePolicy`-Enum in
+  `aur-scanner-core` dokumentiert die pacman-Hook-Grenzen im Doc-Kommentar.
+- **Tests**: bestehende Decision-Tests auf Policy-Signatur migriert; neuer
+  `abort_policy_fail_closes_multi_package_transactions` deckt Abort-Policy,
+  Policy-übergreifendes Single-Package-fail-closed, Scan-Failure-Dominanz und
+  Clean-Run-Proceed ab; der Warn-Test dokumentiert die echte Semantik
+  ("warning, not a skip").
+
+### Threat-Modell-Hinweis (bewusst akzeptiertes Risiko)
+
+Bei `warn` ist CRITICAL auf dem Multi-Package-Pfad (der Normalfall bei
+`-Syu`) advisory, nicht fail-closed. Diese Abwägung ist jetzt explizit
+konfigurierbar und dokumentiert statt stillschweigend. Nutzer, die
+fail-closed wollen, setzen `multi_package_policy = "abort"`.
+
 ## [2.5.2] - 2026-09-26
 
 ### Fixed — multi-package transaction handling
 
-- **CRITICAL findings no longer abort multi-package transactions.** Previously,
+*Semantik-Korrektur 2026-09-26 (v2.5.3): Der folgende Eintrag beschrieb das
+Verhalten ursprünglich als "the offending package is skipped". Das ist
+technisch unmöglich — ein pacman-PreTransaction-Hook kann keine einzelnen
+Targets entfernen. Was tatsächlich geschah: Die gesamte Transaktion lief
+mit Warnung durch, d.h. das CRITICAL-Paket wurde MITINSTALLIERT. v2.5.3
+korrigiert Warnung, Doku und Konfiguration (siehe 2.5.3-Eintrag).*
+
+Previously,
   a single CRITICAL finding in any package aborted the entire pacman
   transaction — blocking all safe packages along with the offending one. Now the
   hook tracks the number of scanned packages: in a multi-package transaction

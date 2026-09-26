@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use aur_scanner_core::validate::is_valid_package_name;
-use aur_scanner_core::{ScanConfig, Scanner, Severity};
+use aur_scanner_core::{MultiPackagePolicy, ScanConfig, Scanner, Severity};
 use colored::Colorize;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
@@ -34,6 +34,9 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Extract the multi-package policy before `config` is moved into the
+    // Scanner — the hook's exit decision needs it after the scan loop.
+    let multi_package_policy = config.multi_package_policy;
     let scanner = Scanner::new(config)?;
 
     // Drop root before touching user-owned cache files. The hook runs as root
@@ -151,7 +154,7 @@ async fn main() -> Result<()> {
     // High-severity only warns. The precedence/branch selection is a pure
     // function so the fail-closed contract is unit-testable; the messaging +
     // process exit stay here.
-    match decide_hook_outcome(scan_failed, has_critical, has_high, scanned_count) {
+    match decide_hook_outcome(scan_failed, has_critical, has_high, scanned_count, multi_package_policy) {
         HookDecision::Abort(AbortReason::ScanFailed) => {
             eprintln!();
             eprintln!(
@@ -172,19 +175,25 @@ async fn main() -> Result<()> {
         }
         HookDecision::Proceed { warn_high, warn_critical_skip } => {
             // Independent notices: a multi-package transaction can have BOTH
-            // skipped critical packages and high-severity findings in the
-            // packages that proceed — both must be summarized, never one
-            // hidden behind the other (review finding: the old `else if`
-            // suppressed the high notice whenever a critical skip fired).
+            // critical findings in packages that proceed and high-severity
+            // findings — both must be summarized, never one hidden behind the
+            // other. The critical notice is deliberately blunt about what a
+            // pacman PreTransaction hook can and cannot do: exit 0 installs
+            // EVERY target — it cannot skip individual packages. The old
+            // "Skipping these package(s)" wording claimed the opposite and
+            // gave false assurance (security-review finding).
             if warn_critical_skip {
                 eprintln!();
                 eprintln!(
-                    "{} Critical security issues found in: {}. \
-                     Skipping these package(s); proceeding with the rest of the transaction.",
+                    "{} CRITICAL security findings in: {}. \
+                     pacman hooks cannot remove individual targets — \
+                     these package(s) WILL BE INSTALLED unless you abort. \
+                     Proceeding with the transaction (multi_package_policy = warn).",
                     "WARNING:".red().bold(),
                     critical_packages.join(", ").bold()
                 );
                 eprintln!("Use 'aur-scan scan <package-dir>' for details.");
+                eprintln!("To fail-closed on multi-package transactions instead, set multi_package_policy = \"abort\" in /etc/aur-scanner/config.toml.");
                 eprintln!();
             }
             if warn_high {
@@ -236,9 +245,14 @@ enum HookDecision {
 ///    transaction — the user explicitly asked for that one package, so
 ///    fail-closed is the safe default.
 /// 3. A critical finding in a MULTI-package transaction (scanned_count > 1)
-///    proceeds with a `warn_critical_skip` notice — the offending package is
-///    skipped and the safe packages are allowed through, instead of aborting
-///    the entire transaction and blocking all the safe packages.
+///    follows the configured `multi_package_policy`:
+///    - `Warn` (default): the whole transaction proceeds with a prominent
+///      notice naming the offending package(s). A pacman PreTransaction hook
+///      CANNOT remove individual targets — exit 0 installs every package in
+///      the transaction, INCLUDING the offending one. The notice says so
+///      plainly; it must never claim the package was "skipped".
+///    - `Abort`: fail-closed — the whole transaction (safe packages included)
+///      is blocked, the pre-merge behavior.
 /// 4. High severity alone proceeds with a warning.
 /// 5. A fully clean run proceeds silently.
 fn decide_hook_outcome(
@@ -246,10 +260,13 @@ fn decide_hook_outcome(
     has_critical: bool,
     has_high: bool,
     scanned_count: usize,
+    policy: MultiPackagePolicy,
 ) -> HookDecision {
     if scan_failed {
         HookDecision::Abort(AbortReason::ScanFailed)
-    } else if has_critical && scanned_count <= 1 {
+    } else if has_critical
+        && (scanned_count <= 1 || policy == MultiPackagePolicy::Abort)
+    {
         HookDecision::Abort(AbortReason::Critical)
     } else {
         HookDecision::Proceed {
@@ -674,7 +691,7 @@ mod tests {
     #[test]
     fn scan_failure_aborts_even_with_no_findings() {
         assert_eq!(
-            decide_hook_outcome(true, false, false, 0),
+            decide_hook_outcome(true, false, false, 0, MultiPackagePolicy::Warn),
             HookDecision::Abort(AbortReason::ScanFailed)
         );
     }
@@ -684,18 +701,20 @@ mod tests {
         // A single-package transaction with a CRITICAL finding must abort
         // (fail-closed): the user explicitly asked for that one package.
         assert_eq!(
-            decide_hook_outcome(false, true, false, 1),
+            decide_hook_outcome(false, true, false, 1, MultiPackagePolicy::Warn),
             HookDecision::Abort(AbortReason::Critical)
         );
     }
 
     #[test]
-    fn critical_finding_proceeds_with_skip_in_multi_package() {
-        // Multi-package transaction: CRITICAL in one package should NOT abort
-        // the entire transaction. The offending package is skipped (warned)
-        // and the safe packages are allowed through.
+    fn critical_finding_proceeds_with_warn_notice_in_multi_package() {
+        // Multi-package transaction with the default policy (Warn): a CRITICAL
+        // finding does NOT abort the transaction. IMPORTANT: pacman's
+        // PreTransaction hook CANNOT remove individual targets — proceeding
+        // means the offending package IS installed along with the safe ones;
+        // the hook's notice says exactly that. It is a warning, not a skip.
         assert_eq!(
-            decide_hook_outcome(false, true, false, 3),
+            decide_hook_outcome(false, true, false, 3, MultiPackagePolicy::Warn),
             HookDecision::Proceed {
                 warn_high: false,
                 warn_critical_skip: true,
@@ -703,7 +722,7 @@ mod tests {
         );
         // Two packages is also multi.
         assert_eq!(
-            decide_hook_outcome(false, true, false, 2),
+            decide_hook_outcome(false, true, false, 2, MultiPackagePolicy::Warn),
             HookDecision::Proceed {
                 warn_high: false,
                 warn_critical_skip: true,
@@ -712,9 +731,41 @@ mod tests {
     }
 
     #[test]
+    fn abort_policy_fail_closes_multi_package_transactions() {
+        // multi_package_policy = "abort" restores the pre-merge behavior:
+        // a CRITICAL finding in ANY transaction size aborts everything.
+        assert_eq!(
+            decide_hook_outcome(false, true, false, 2, MultiPackagePolicy::Abort),
+            HookDecision::Abort(AbortReason::Critical)
+        );
+        assert_eq!(
+            decide_hook_outcome(false, true, false, 5, MultiPackagePolicy::Abort),
+            HookDecision::Abort(AbortReason::Critical)
+        );
+        // Single-package stays fail-closed under BOTH policies.
+        assert_eq!(
+            decide_hook_outcome(false, true, false, 1, MultiPackagePolicy::Abort),
+            HookDecision::Abort(AbortReason::Critical)
+        );
+        // Scan failure dominates regardless of policy.
+        assert_eq!(
+            decide_hook_outcome(true, true, false, 3, MultiPackagePolicy::Abort),
+            HookDecision::Abort(AbortReason::ScanFailed)
+        );
+        // Clean runs proceed under both policies.
+        assert_eq!(
+            decide_hook_outcome(false, false, false, 3, MultiPackagePolicy::Abort),
+            HookDecision::Proceed {
+                warn_high: false,
+                warn_critical_skip: false,
+            }
+        );
+    }
+
+    #[test]
     fn critical_and_high_in_multi_package_proceeds_with_both_warnings() {
         assert_eq!(
-            decide_hook_outcome(false, true, true, 3),
+            decide_hook_outcome(false, true, true, 3, MultiPackagePolicy::Warn),
             HookDecision::Proceed {
                 warn_high: true,
                 warn_critical_skip: true,
@@ -725,7 +776,7 @@ mod tests {
     #[test]
     fn scan_failure_takes_precedence_over_critical() {
         assert_eq!(
-            decide_hook_outcome(true, true, true, 3),
+            decide_hook_outcome(true, true, true, 3, MultiPackagePolicy::Warn),
             HookDecision::Abort(AbortReason::ScanFailed)
         );
     }
@@ -734,7 +785,7 @@ mod tests {
     fn scan_failure_aborts_even_in_multi_package() {
         // Scan failure is always fail-closed, even in a multi-package tx.
         assert_eq!(
-            decide_hook_outcome(true, false, false, 5),
+            decide_hook_outcome(true, false, false, 5, MultiPackagePolicy::Warn),
             HookDecision::Abort(AbortReason::ScanFailed)
         );
     }
@@ -742,7 +793,7 @@ mod tests {
     #[test]
     fn high_only_proceeds_with_warning() {
         assert_eq!(
-            decide_hook_outcome(false, false, true, 1),
+            decide_hook_outcome(false, false, true, 1, MultiPackagePolicy::Warn),
             HookDecision::Proceed {
                 warn_high: true,
                 warn_critical_skip: false,
@@ -753,7 +804,7 @@ mod tests {
     #[test]
     fn clean_run_proceeds_without_warning() {
         assert_eq!(
-            decide_hook_outcome(false, false, false, 3),
+            decide_hook_outcome(false, false, false, 3, MultiPackagePolicy::Warn),
             HookDecision::Proceed {
                 warn_high: false,
                 warn_critical_skip: false,
@@ -767,7 +818,7 @@ mod tests {
         // happen in practice, but the function must be safe). A critical
         // finding with no scanned packages is treated as single-package (abort).
         assert_eq!(
-            decide_hook_outcome(false, true, false, 0),
+            decide_hook_outcome(false, true, false, 0, MultiPackagePolicy::Warn),
             HookDecision::Abort(AbortReason::Critical)
         );
     }
