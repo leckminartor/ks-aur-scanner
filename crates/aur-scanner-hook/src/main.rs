@@ -171,6 +171,11 @@ async fn main() -> Result<()> {
             std::process::exit(1);
         }
         HookDecision::Proceed { warn_high, warn_critical_skip } => {
+            // Independent notices: a multi-package transaction can have BOTH
+            // skipped critical packages and high-severity findings in the
+            // packages that proceed — both must be summarized, never one
+            // hidden behind the other (review finding: the old `else if`
+            // suppressed the high notice whenever a critical skip fired).
             if warn_critical_skip {
                 eprintln!();
                 eprintln!(
@@ -181,7 +186,8 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("Use 'aur-scan scan <package-dir>' for details.");
                 eprintln!();
-            } else if warn_high {
+            }
+            if warn_high {
                 eprintln!();
                 eprintln!(
                     "{} High severity issues found. Review recommended.",

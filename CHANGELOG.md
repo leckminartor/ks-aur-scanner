@@ -21,6 +21,14 @@ All notable changes to this project are documented here. The format is based on
   `natpos-sdr`, and `sdrsharp` together — `sdrsharp` has a CRITICAL DEEP-001
   finding. Before the fix, all 69 packages were blocked. After the fix, all
   packages installed successfully with a warning naming `sdrsharp`.
+
+- **Merge-review follow-up (dual-LLM review finding):** the terminal summary
+  now prints the high-severity notice independently of the critical-skip notice.
+  The merged branch used `else if`, so a multi-package transaction with BOTH
+  skipped CRITICAL packages and HIGH findings in the proceeding packages showed
+  only the critical-skip warning and silently dropped the high-severity summary.
+  Both notices are now printed whenever both conditions hold.
+
 ## [2.5.1] - 2026-09-25
 
 ### Added — `validator` disguise name (openconnect-sso Wave-3 anchor coverage)
